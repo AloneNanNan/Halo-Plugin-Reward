@@ -40,6 +40,10 @@ logs/
 log/
 *.log
 *.tmp
+*.tsbuildinfo
+.eslintcache
+coverage/
+*.timestamp-*-*.mjs
 
 ### 打包文件
 *.war

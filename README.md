@@ -300,7 +300,7 @@ cd ui && pnpm install
 
 产物位于 `build/libs/plugin-reward-<version>.jar`。
 
-本项目基于 Halo 官方插件脚手架 [`halo-sigs/plugin-starter`](https://github.com/halo-sigs/plugin-starter) 创建。
+本项目基于 Halo 官方插件脚手架 [`halo-dev/plugin-starter`](https://github.com/halo-dev/plugin-starter) 创建。该模板后续由 [`create-halo-plugin`](https://github.com/halo-dev/create-halo-plugin) 取代；本项目沿用其生成后的工程结构，不依赖模板仓库的后续更新。
 
 ## 许可证
 
