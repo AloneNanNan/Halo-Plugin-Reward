@@ -279,6 +279,8 @@ reward-halo-plugin/
 │       ├── views/RewardView.vue     打赏记录页
 │       └── components/              编辑弹窗
 ├── dev/                           开发者文档
+├── AGENTS.md                      AI 协作开发约定
+├── CONTRIBUTING.md                贡献指南
 ├── LICENSE
 └── build.gradle
 ```
@@ -287,9 +289,15 @@ reward-halo-plugin/
 
 ### 本地开发
 
+> 面向贡献者：欢迎参与开发！贡献流程、自检项与 PR 规范请阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
+>
+> 面向 AI 协作者：仓库根目录提供 [`AGENTS.md`](./AGENTS.md)，内含构建命令、目录约定、权限模型、注释规范与常见坑，使用 AI 编码工具（Codex / opencode / Cursor 等）前请先阅读。
+>
+> 环境要求：**Halo >= 2.27.0**、**JDK 21**、**Node.js 22+**、**pnpm 9**；`./gradlew haloServer` 另需 **Docker**。
+
 ```bash
-# 安装前端依赖
-cd ui && pnpm install
+# 安装控制台前端依赖
+pnpm --dir ui install
 
 # 启动开发环境（需要 Docker）
 ./gradlew haloServer

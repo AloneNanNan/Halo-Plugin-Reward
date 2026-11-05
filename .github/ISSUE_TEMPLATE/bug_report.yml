@@ -1,0 +1,114 @@
+name: 问题反馈
+description: 插件出现报错、显示异常或功能失效时使用此模板
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 提交前请确认
+        - 插件要求 **Halo ≥ 2.27.0**，请先确认 Halo 版本满足要求
+        - 请先在 [Issues](../../issues?q=is%3Aissue) 中搜索，避免重复提交
+        - 涉及爱发电的问题，请先确认「插件设置 → 爱发电」已启用并填好凭据
+
+  - type: checkboxes
+    attributes:
+      label: 自查清单
+      options:
+        - label: 我已搜索 Issues，未找到相同或类似问题
+        - label: 我已使用最新版本插件测试（或已注明使用旧版本的原因）
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      description: 可在「插件 → 打赏插件」页面查看；源码构建版请注明 commit
+      placeholder: 例如：1.0.0-beta.1
+    validations:
+      required: true
+
+  - type: input
+    id: halo-version
+    attributes:
+      label: Halo 版本
+      description: 可在控制台「关于」页面查看
+      placeholder: 例如：2.27.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: 问题位置
+      description: 问题出现在哪个页面或能力上（可多选）
+      multiple: true
+      options:
+        - 前台打赏页（/reward）
+        - 打赏信息弹窗（提交表单 / 验证码）
+        - 赞助者墙（展示 / 加载更多）
+        - 后台打赏记录页（列表 / 筛选 / 批量操作）
+        - 记录编辑弹窗
+        - CSV 导出
+        - 插件设置表单
+        - 爱发电（手动同步）
+        - 爱发电（订单回调 / Webhook）
+        - 打赏通知
+        - 角色权限
+        - 其他
+
+  - type: dropdown
+    id: afdian
+    attributes:
+      label: 是否启用爱发电
+      options:
+        - 未启用
+        - 已启用
+        - 不确定
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 用简洁的语言说明遇到的问题
+      placeholder: 例如：提交打赏信息后提示成功，但后台记录列表里没有这条记录……
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 按顺序列出最小复现步骤
+      placeholder: |
+        1. 启用插件并配置收款码
+        2. 打开 /reward，点击「我已完成打赏」
+        3. 填写金额与昵称，提交
+        4. 观察到……
+      render: markdown
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为 / 实际行为
+      placeholder: |
+        预期：……
+        实际：……
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 直接将图片拖入此处粘贴
+
+  - type: textarea
+    id: console
+    attributes:
+      label: 浏览器控制台或服务端日志
+      description: 前台问题按 F12 查看 Console；后台报错可在 Halo 日志中搜索 `plugin-reward`
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息（可选）
+      description: 有助于定位问题的信息，例如：是否覆盖了主题模板、是否使用了 CDN / 反向代理、是否安装了其他改动前台的插件
