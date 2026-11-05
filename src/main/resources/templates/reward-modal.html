@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="https://www.thymeleaf.org">
+<body>
+
+<!--
+  供主题直接引用的打赏按钮片段。
+
+  使用方式：
+  <div th:replace="~{plugin:plugin-reward:reward-modal :: button}"></div>
+
+  点击后由插件脚本动态弹出打赏表单，样式与插件自带页面一致。
+-->
+<th:block th:fragment="button(label = '我已完成打赏')">
+  <script th:src="@{/plugins/plugin-reward/assets/dist/reward-modal.js}" defer></script>
+  <button type="button" data-reward-open
+          style="display:block;width:100%;padding:.75rem 1rem;border:1px solid #e4e4e7;border-radius:12px;background:transparent;color:inherit;font-size:.92rem;font-weight:500;cursor:pointer;"
+          th:text="${label}">我已完成打赏</button>
+</th:block>
+
+</body>
+</html>

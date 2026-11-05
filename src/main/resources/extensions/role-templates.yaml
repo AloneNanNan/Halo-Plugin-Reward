@@ -1,0 +1,59 @@
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: plugin-reward-role-anonymous
+  labels:
+    halo.run/role-template: "true"
+    halo.run/hidden: "true"
+    rbac.authorization.halo.run/aggregate-to-anonymous: "true"
+rules:
+  # 前台打赏页读取公开配置与赞助者墙
+  - apiGroups: ["api.reward.nanzhiy.cn"]
+    resources: ["public", "plugin-reward/public"]
+    verbs: ["get"]
+  # 访客提交打赏记录
+  - apiGroups: ["api.reward.nanzhiy.cn"]
+    resources: ["records", "plugin-reward/records"]
+    verbs: ["create"]
+  # 爱发电订单回调
+  - apiGroups: ["api.reward.nanzhiy.cn"]
+    resources: ["afdian"]
+    verbs: ["create"]
+---
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: plugin-reward-role-view
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "打赏管理"
+    rbac.authorization.halo.run/display-name: "打赏记录查看"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:plugin-reward:records:view"]
+rules:
+  # 列表走 list；导出 CSV 是带 name 的 get，故查看角色只授予 list，导出归入管理角色
+  - apiGroups: ["reward.nanzhiy.cn", "console.api.reward.nanzhiy.cn"]
+    resources: ["records", "plugin-reward/records"]
+    verbs: ["list"]
+---
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: plugin-reward-role-manage
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "打赏管理"
+    rbac.authorization.halo.run/display-name: "打赏记录管理"
+    rbac.authorization.halo.run/dependencies: |
+      ["plugin-reward-role-view"]
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:plugin-reward:records:manage"]
+rules:
+  - apiGroups: ["reward.nanzhiy.cn", "console.api.reward.nanzhiy.cn"]
+    resources: ["records", "plugin-reward/records"]
+    verbs: ["get", "create", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["console.api.reward.nanzhiy.cn"]
+    resources: ["afdian"]
+    verbs: ["get", "create"]

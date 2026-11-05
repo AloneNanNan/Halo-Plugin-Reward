@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="https://www.thymeleaf.org"
+      th:replace="~{layout :: html(head = ~{::head}, content = ~{::content})}">
+<th:block th:fragment="head">
+  <title th:text="${reward.title} + ' - ' + ${site.title}">打赏</title>
+  <link rel="stylesheet" th:href="@{/plugins/plugin-reward/assets/dist/reward.css}" />
+  <script th:src="@{/plugins/plugin-reward/assets/dist/reward-modal.js}" defer></script>
+  <script th:src="@{/plugins/plugin-reward/assets/dist/reward.js}" defer></script>
+</th:block>
+<th:block th:fragment="content">
+  <div class="reward-page"
+       th:attr="data-page-size=${reward.wallPageSize},
+                data-currency=${reward.currencySymbol}">
+    <header class="reward-header">
+      <h1 class="reward-title" th:text="${reward.title}">打赏支持</h1>
+      <p class="reward-intro" th:if="${reward.intro}" th:text="${reward.intro}"></p>
+    </header>
+
+    <div class="reward-layout">
+      <main class="reward-main">
+        <section class="reward-card">
+          <div class="reward-card__head">
+            <h2 class="reward-card__title">打赏方式</h2>
+          </div>
+
+          <div class="reward-pays"
+               th:if="${not #strings.isEmpty(reward.wechatQr) or not #strings.isEmpty(reward.alipayQr) or not #strings.isEmpty(reward.afdianPageUrl)}">
+            <figure class="reward-pay" th:if="${not #strings.isEmpty(reward.wechatQr)}">
+              <img class="reward-qr" th:src="${reward.wechatQr}" alt="微信收款码" />
+              <figcaption>微信</figcaption>
+            </figure>
+            <figure class="reward-pay" th:if="${not #strings.isEmpty(reward.alipayQr)}">
+              <img class="reward-qr" th:src="${reward.alipayQr}" alt="支付宝收款码" />
+              <figcaption>支付宝</figcaption>
+            </figure>
+            <a class="reward-pay reward-pay--afdian" th:if="${not #strings.isEmpty(reward.afdianPageUrl)}"
+               th:href="${reward.afdianPageUrl}" target="_blank" rel="noopener noreferrer">
+              <span class="reward-afdian-card">
+                <svg class="reward-afdian-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 20.5S3.5 15.6 3.5 10.2A4.7 4.7 0 0 1 12 7.4a4.7 4.7 0 0 1 8.5 2.8c0 5.4-8.5 10.3-8.5 10.3z" />
+                </svg>
+                <span class="reward-afdian-action">前往爱发电</span>
+              </span>
+              <figcaption>爱发电</figcaption>
+            </a>
+          </div>
+          <p class="reward-empty-qr"
+             th:if="${#strings.isEmpty(reward.wechatQr) and #strings.isEmpty(reward.alipayQr) and #strings.isEmpty(reward.afdianPageUrl)}">
+            站长尚未配置收款方式。
+          </p>
+
+          <p class="reward-tip" th:if="${reward.paymentTip}" th:text="${reward.paymentTip}"></p>
+
+          <button type="button" class="reward-open-form" th:if="${reward.enableRecordSubmit}"
+                  data-reward-open>
+            我已完成打赏
+          </button>
+        </section>
+      </main>
+
+      <aside class="reward-aside" th:if="${reward.wallEnabled}">
+        <section class="reward-card">
+          <div class="reward-card__head">
+            <h2 class="reward-card__title">赞助者墙</h2>
+            <span class="reward-wall-count" th:if="${reward.wallTotal > 0}"
+                  th:text="${reward.wallTotal}">0</span>
+          </div>
+
+          <ul class="reward-wall-list" th:if="${not #lists.isEmpty(reward.wallItems)}">
+            <li class="reward-wall-item" th:each="item : ${reward.wallItems}">
+              <div class="reward-wall-head">
+                <img class="reward-wall-avatar" th:if="${item.avatar}" th:src="${item.avatar}"
+                     alt="" loading="lazy" />
+                <span class="reward-wall-avatar reward-wall-avatar--text" th:unless="${item.avatar}"
+                      th:text="${item.initial}">匿</span>
+                <div class="reward-wall-info">
+                  <span class="reward-wall-name" th:text="${item.nickname}">匿名读者</span>
+                  <time class="reward-wall-time" th:if="${item.createdAt}" th:text="${item.createdAt}"></time>
+                </div>
+                <span class="reward-wall-amount"
+                      th:if="${reward.showAmountOnWall and item.amount != null}"
+                      th:text="${reward.currencySymbol} + ${item.amount}">¥6</span>
+              </div>
+              <p class="reward-wall-message" th:if="${item.message}" th:text="${item.message}"></p>
+            </li>
+          </ul>
+
+          <p class="reward-wall-empty" th:if="${#lists.isEmpty(reward.wallItems)}">
+            还没有公开的打赏记录。
+          </p>
+
+          <button type="button" class="reward-more"
+                  th:if="${reward.wallTotal > #lists.size(reward.wallItems)}">
+            加载更多
+          </button>
+        </section>
+      </aside>
+    </div>
+
+    <div class="reward-lightbox" hidden>
+      <img class="reward-lightbox-img" alt="收款码大图" />
+    </div>
+  </div>
+</th:block>
+</html>

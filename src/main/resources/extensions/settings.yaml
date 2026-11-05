@@ -1,0 +1,141 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: plugin-reward-settings
+spec:
+  forms:
+    - group: basic
+      label: 基础设置
+      formSchema:
+        - $formkit: switch
+          name: enable
+          label: 启用打赏页面
+          help: 关闭后 /reward 页面将返回 404，已提交的记录不受影响。
+          value: true
+        - $formkit: text
+          name: pageTitle
+          label: 页面标题
+          value: 打赏支持
+        - $formkit: textarea
+          name: pageIntro
+          label: 页面简介
+          help: 显示在打赏页标题下方，可留空。
+          value: 您的打赏将用于服务器维护、内容创作和功能开发，帮助我持续提供优质内容。
+        - $formkit: text
+          name: currencySymbol
+          label: 货币符号
+          value: "¥"
+    - group: payment
+      label: 收款设置
+      formSchema:
+        - $formkit: attachment
+          name: wechatQr
+          label: 微信收款码
+          accepts:
+            - "image/*"
+          width: "200px"
+          aspectRatio: "1/1"
+        - $formkit: attachment
+          name: alipayQr
+          label: 支付宝收款码
+          accepts:
+            - "image/*"
+          width: "200px"
+          aspectRatio: "1/1"
+        - $formkit: textarea
+          name: paymentTip
+          label: 收款提示
+          help: 显示在收款方式下方。
+          value: 通过微信/支付宝打赏后可点击下方按钮进行提交打赏信息，审核通过后将展示在赞助者墙；通过爱发电打赏后无需提交，会将自动拉取信息。
+    - group: records
+      label: 记录与展示
+      formSchema:
+        - $formkit: switch
+          name: enableRecordSubmit
+          label: 允许访客提交打赏记录
+          help: 关闭后前台只展示收款码，不再收集记录。
+          value: true
+        - $formkit: switch
+          name: requireLogin
+          label: 仅登录用户可提交
+          help: 开启后未登录访客无法提交打赏记录。
+          value: false
+        - $formkit: switch
+          name: allowMessage
+          label: 允许填写留言
+          value: true
+        - $formkit: switch
+          name: enableCaptcha
+          label: 提交时校验图形验证码
+          help: 开启后访客提交前需填写验证码，可有效抑制机器人刷量。
+          value: true
+        - $formkit: switch
+          name: enableTransactionNo
+          label: 要求填写交易单号
+          help: 开启后前台显示交易单号输入框，且为必填项，便于核对收款。
+          value: false
+        - $formkit: switch
+          name: enableAvatar
+          label: 允许访客填写头像地址
+          help: 开启后前台显示头像地址输入框（选填），只接受 http(s) 图片地址；后台编辑记录时可直接从附件库选择。
+          value: false
+        - $formkit: switch
+          name: autoApprove
+          label: 提交后自动通过
+          help: 关闭时新记录为待确认状态，需在「内容 → 打赏」中确认后才会出现在赞助者墙。
+          value: false
+        - $formkit: switch
+          name: wallEnabled
+          label: 展示赞助者墙
+          value: true
+        - $formkit: number
+          name: wallPageSize
+          label: 赞助者墙每页条数
+          value: 10
+          validation: required|min:1|max:50
+        - $formkit: switch
+          name: showAmountOnWall
+          label: 在赞助者墙显示金额
+          value: true
+    - group: afdian
+      label: 爱发电
+      formSchema:
+        - $formkit: switch
+          name: enable
+          label: 启用爱发电
+          help: 开启后可使用爱发电订单回调与手动同步。
+          value: false
+        - $formkit: text
+          name: userId
+          label: 开发者 user_id
+          help: 在爱发电开发者后台 https://afdian.com/dashboard/dev 获取。
+        - $formkit: secret
+          name: secretName
+          label: API 凭据
+          help: 点击此处新建密钥：键名填 token，值填爱发电 API Token；也可以选择已有密钥。
+          requiredKeys:
+            - key: token
+              help: 爱发电 API Token
+        - $formkit: text
+          name: pageUrl
+          label: 爱发电主页
+          help: 填写后前台打赏页会展示「前往爱发电」入口，例如 https://afdian.com/a/yourname。
+          validation: url
+          validationVisibility: blur
+        - $formkit: switch
+          name: autoApprove
+          label: 订单自动确认并展示
+          help: 关闭时爱发电订单入库为待确认状态，需在打赏记录中手动确认。
+          value: true
+    - group: notify
+      label: 通知
+      formSchema:
+        - $formkit: switch
+          name: notifyOnSubmit
+          label: 有新的打赏记录时通知管理员
+          help: 适用于前台表单提交产生的待确认记录。
+          value: true
+        - $formkit: switch
+          name: notifyOnAfdianOrder
+          label: 爱发电新订单入库时通知管理员
+          value: true

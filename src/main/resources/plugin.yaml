@@ -1,0 +1,23 @@
+# Refer https://docs.halo.run/developer-guide/plugin/basics/manifest
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: plugin-reward
+spec:
+  enabled: false
+  requires: ">=2.27.0"
+  version: 1.0.0-beta.1
+  author:
+    name: 楠南NanNan
+    website: https://www.nanzhiy.cn
+  logo: logo.png
+  homepage: https://github.com/AloneNanNan/halo-plugin-reward
+  repo: https://github.com/AloneNanNan/halo-plugin-reward
+  issues: https://github.com/AloneNanNan/halo-plugin-reward/issues
+  displayName: "打赏插件"
+  description: "一款面向个人站长的打赏页面插件，支持访客提交打赏信息以及与爱发电对接"
+  license:
+    - name: "GPL-3.0"
+      url: "https://www.gnu.org/licenses/gpl-3.0.html"
+  settingName: plugin-reward-settings
+  configMapName: plugin-reward-configmap

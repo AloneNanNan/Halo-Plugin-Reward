@@ -1,0 +1,385 @@
+:root {
+  --rw-card: #ffffff;
+  --rw-border: #ececee;
+  --rw-text: #18181b;
+  --rw-text-2: #52525b;
+  --rw-muted: #8e8e96;
+  --rw-accent: #b8892b;
+  --rw-btn: #18181b;
+  --rw-btn-text: #ffffff;
+  --rw-btn-hover: #2f2f33;
+  --rw-radius-lg: 20px;
+  --rw-radius-md: 12px;
+  --rw-shadow: 0 1px 2px rgba(24, 24, 27, 0.04), 0 8px 24px -12px rgba(24, 24, 27, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rw-card: #1b1b1e;
+    --rw-border: #2a2a2f;
+    --rw-text: #f4f4f5;
+    --rw-text-2: #a9a9b2;
+    --rw-muted: #77777f;
+    --rw-accent: #e0be62;
+    --rw-btn: #f4f4f5;
+    --rw-btn-text: #18181b;
+    --rw-btn-hover: #ffffff;
+    --rw-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.reward-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+  color: var(--rw-text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* 页头 */
+.reward-header {
+  margin-bottom: 2rem;
+}
+
+.reward-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.reward-intro {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--rw-text-2);
+  font-size: 0.95rem;
+}
+
+/* 两栏布局 */
+.reward-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.reward-card {
+  padding: 1.5rem;
+  border: 1px solid var(--rw-border);
+  border-radius: var(--rw-radius-lg);
+  background: var(--rw-card);
+  box-shadow: var(--rw-shadow);
+}
+
+.reward-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.reward-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.reward-wall-count {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(184, 137, 43, 0.12);
+  color: var(--rw-accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* 收款码 */
+.reward-pays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.reward-pay {
+  margin: 0;
+  text-align: center;
+}
+
+.reward-qr {
+  display: block;
+  width: 152px;
+  height: 152px;
+  object-fit: contain;
+  border: 1px solid var(--rw-border);
+  border-radius: 16px;
+  background: #fff;
+  cursor: zoom-in;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reward-qr:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.35);
+}
+
+.reward-pay--afdian {
+  color: inherit;
+  text-decoration: none;
+}
+
+.reward-afdian-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 152px;
+  height: 152px;
+  box-sizing: border-box;
+  border: 1px solid var(--rw-border);
+  border-radius: 16px;
+  background: var(--rw-card);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reward-pay--afdian:hover .reward-afdian-card {
+  transform: translateY(-2px);
+  border-color: var(--rw-accent);
+  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.35);
+}
+
+.reward-afdian-icon {
+  width: 30px;
+  height: 30px;
+  color: var(--rw-accent);
+}
+
+.reward-afdian-action {
+  color: var(--rw-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.reward-pay figcaption {
+  margin-top: 0.5rem;
+  color: var(--rw-text-2);
+  font-size: 0.82rem;
+}
+
+.reward-empty-qr {
+  margin: 0;
+  padding: 2rem 0;
+  color: var(--rw-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.reward-tip {
+  margin: 1.1rem 0 0;
+  color: var(--rw-text-2);
+  font-size: 0.85rem;
+}
+
+/* 展开按钮 */
+.reward-open-form {
+  display: block;
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--rw-border);
+  border-radius: var(--rw-radius-md);
+  background: transparent;
+  color: var(--rw-text);
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.reward-open-form:hover {
+  border-color: var(--rw-text);
+  background: rgba(128, 128, 128, 0.06);
+}
+
+/* 赞助者墙 */
+.reward-wall-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 34rem;
+  overflow-y: auto;
+}
+
+.reward-wall-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--rw-border);
+}
+
+.reward-wall-item:first-child {
+  padding-top: 0;
+}
+
+.reward-wall-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.reward-wall-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.reward-wall-avatar {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #fff;
+}
+
+.reward-wall-avatar--text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(184, 137, 43, 0.14);
+  color: var(--rw-accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.reward-wall-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.reward-wall-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reward-wall-time {
+  color: var(--rw-muted);
+  font-size: 0.72rem;
+}
+
+.reward-wall-amount {
+  margin-left: auto;
+  flex: none;
+  color: var(--rw-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.reward-wall-message {
+  margin: 0.4rem 0 0 2.75rem;
+  color: var(--rw-text-2);
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.reward-wall-empty {
+  margin: 0;
+  padding: 2rem 0;
+  color: var(--rw-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.reward-more {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--rw-border);
+  border-radius: var(--rw-radius-md);
+  background: transparent;
+  color: var(--rw-text-2);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.reward-more:hover {
+  border-color: var(--rw-text);
+  color: var(--rw-text);
+}
+
+/* 图片放大 */
+.reward-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.75);
+  cursor: zoom-out;
+}
+
+.reward-lightbox[hidden] {
+  display: none;
+}
+
+.reward-lightbox-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 16px;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .reward-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reward-wall-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .reward-page {
+    padding: 1.75rem 1rem 3rem;
+  }
+
+  .reward-title {
+    font-size: 1.55rem;
+  }
+
+  .reward-card {
+    padding: 1.15rem;
+    border-radius: 16px;
+  }
+
+  .reward-pays {
+    gap: 0.9rem;
+  }
+
+  .reward-qr,
+  .reward-afdian-card {
+    width: 132px;
+    height: 132px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reward-qr,
+  .reward-open-form,
+  .reward-more {
+    transition: none;
+  }
+
+  .reward-qr:hover {
+    transform: none;
+  }
+}

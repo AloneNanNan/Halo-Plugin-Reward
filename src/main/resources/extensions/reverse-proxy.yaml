@@ -1,0 +1,10 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: ReverseProxy
+metadata:
+  name: plugin-reward-static-proxy
+rules:
+  # directory 是文件根目录，path 是相对 /plugins/plugin-reward/assets 的访问前缀。
+  # 这里只暴露前台页面用的 static/dist，Console 资源由 Halo 的 ui/ 路由单独处理。
+  - path: /dist/**
+    file:
+      directory: static/dist

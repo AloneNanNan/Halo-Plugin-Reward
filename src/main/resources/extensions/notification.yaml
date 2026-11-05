@@ -1,0 +1,68 @@
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: reward-new-record
+spec:
+  displayName: "打赏通知"
+  description: "有新的打赏记录时通知管理员"
+  properties:
+    - name: nickname
+      type: string
+      description: "打赏者昵称"
+    - name: amount
+      type: string
+      description: "打赏金额"
+    - name: time
+      type: string
+      description: "打赏时间"
+    - name: source
+      type: string
+      description: "来源渠道"
+    - name: message
+      type: string
+      description: "留言内容"
+    - name: manageUrl
+      type: string
+      description: "后台打赏记录页面地址"
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: reward-new-record-template
+spec:
+  reasonSelector:
+    reasonType: reward-new-record
+    language: default
+  template:
+    title: "收到新的打赏记录：[(${nickname})] ¥[(${amount})]"
+    rawBody: |
+      [(${subscriber.displayName})] 你好：
+
+      收到一笔新的打赏记录：
+
+      - 昵称：[(${nickname})]
+      - 金额：¥[(${amount})]
+      - 时间：[(${time})]
+      - 来源：[(${source})]
+      - 留言：[(${message})]
+
+      前往确认：[(${manageUrl})]
+    htmlBody: |
+      <div class="notification-content">
+        <div class="head">
+          <p th:text="|${subscriber.displayName} 你好：|"></p>
+        </div>
+        <div class="body">
+          <p>收到一笔新的打赏记录：</p>
+          <ul>
+            <li>昵称：<span th:text="${nickname}"></span></li>
+            <li>金额：¥<span th:text="${amount}"></span></li>
+            <li>时间：<span th:text="${time}"></span></li>
+            <li>来源：<span th:text="${source}"></span></li>
+            <li>留言：<span th:text="${message}"></span></li>
+          </ul>
+          <p>
+            <a th:href="${manageUrl}" target="_blank" rel="noopener noreferrer">前往确认</a>
+          </p>
+        </div>
+      </div>
