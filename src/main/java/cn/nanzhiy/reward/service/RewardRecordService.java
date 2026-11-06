@@ -38,8 +38,12 @@ import run.halo.app.extension.ReactiveExtensionClient;
 @RequiredArgsConstructor
 public class RewardRecordService {
 
+    /**
+     * 排序依赖 spec.rewardTime 的索引，索引值由 {@link RewardRecord#resolveRewardTime} 计算，
+     * 因此未填打赏时间的记录会按入库时间参与排序，不会因为空值落到不确定的位置。
+     */
     private static final Sort DEFAULT_SORT =
-        Sort.by(Sort.Order.desc("metadata.creationTimestamp"));
+        Sort.by(Sort.Order.desc("spec.rewardTime"));
 
     private static final DateTimeFormatter DATE_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault());
@@ -53,6 +57,14 @@ public class RewardRecordService {
     private final AtomicReference<CachedStats> statsCache = new AtomicReference<>();
 
     private record CachedStats(RewardStatsVo stats, Instant cachedAt) {
+    }
+
+    /**
+     * 统计结果有 60 秒缓存，写操作后立即失效：改完打赏时间还需要等一分钟才看到新数字，
+     * 容易被当成没保存成功。
+     */
+    private void invalidateStats() {
+        statsCache.set(null);
     }
 
     /**
@@ -96,11 +108,13 @@ public class RewardRecordService {
             metadata.setName("reward-" + UUID.randomUUID());
             record.setMetadata(metadata);
         }
-        return client.create(record);
+        return client.create(record)
+            .doOnNext(saved -> invalidateStats());
     }
 
     /**
      * 更新记录中可由站长编辑的字段。仅覆盖请求中出现的字段，避免部分更新清空其它内容。
+     * 打赏时间传 null 一律视为不修改，本方法不提供「清空回退」语义。
      */
     public Mono<RewardRecord> updateSpec(String name, RewardRecord.Spec patch) {
         return client.fetch(RewardRecord.class, name)
@@ -128,13 +142,17 @@ public class RewardRecordService {
                 if (patch.getAvatar() != null) {
                     spec.setAvatar(patch.getAvatar());
                 }
+                if (patch.getRewardTime() != null) {
+                    spec.setRewardTime(patch.getRewardTime());
+                }
                 if (patch.getMethod() != null) {
                     spec.setMethod(patch.getMethod());
                 }
                 if (patch.getStatus() != null) {
                     spec.setStatus(patch.getStatus());
                 }
-                return client.update(record);
+                return client.update(record)
+                    .doOnNext(updated -> invalidateStats());
             });
     }
 
@@ -151,12 +169,15 @@ public class RewardRecordService {
                     record.setSpec(spec);
                 }
                 spec.setStatus(status);
-                return client.update(record);
+                return client.update(record)
+                    .doOnNext(updated -> invalidateStats());
             });
     }
 
     public Mono<RewardRecord> delete(String name) {
-        return client.fetch(RewardRecord.class, name).flatMap(client::delete);
+        return client.fetch(RewardRecord.class, name)
+            .flatMap(client::delete)
+            .doOnNext(deleted -> invalidateStats());
     }
 
     public Flux<RewardRecord> listAll() {
@@ -203,9 +224,9 @@ public class RewardRecordService {
                 continue;
             }
             total = total.add(spec.getAmount());
-            var created = record.getMetadata() == null
-                ? null : record.getMetadata().getCreationTimestamp();
-            if (created != null && !created.isBefore(monthStart)) {
+            // 本月口径按打赏时间：补录历史记录时不应把金额算进当月。
+            var rewardTime = RewardRecord.resolveRewardTime(record);
+            if (rewardTime != null && !rewardTime.isBefore(monthStart)) {
                 month = month.add(spec.getAmount());
                 monthCount++;
             }
@@ -234,10 +255,9 @@ public class RewardRecordService {
             item.setAmount(showAmount ? spec.getAmount() : null);
             item.setAvatar(safeImageUrl(spec.getAvatar()));
             item.setMessage(StringUtils.hasText(spec.getMessage()) ? spec.getMessage() : null);
-            if (record.getMetadata() != null
-                && record.getMetadata().getCreationTimestamp() != null) {
-                item.setCreatedAt(
-                    DATE_FORMATTER.format(record.getMetadata().getCreationTimestamp()));
+            var rewardTime = RewardRecord.resolveRewardTime(record);
+            if (rewardTime != null) {
+                item.setCreatedAt(DATE_FORMATTER.format(rewardTime));
             }
             items.add(item);
         }

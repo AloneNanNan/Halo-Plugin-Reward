@@ -138,8 +138,8 @@ public class RewardNotificationService {
         attributes.put("nickname", spec.getNickname() == null ? "匿名读者" : spec.getNickname());
         attributes.put("amount",
             spec.getAmount() == null ? "-" : spec.getAmount().toPlainString());
-        attributes.put("time", record.getMetadata().getCreationTimestamp() == null
-            ? "-" : DATE_TIME_FORMATTER.format(record.getMetadata().getCreationTimestamp()));
+        var rewardTime = RewardRecord.resolveRewardTime(record);
+        attributes.put("time", rewardTime == null ? "-" : DATE_TIME_FORMATTER.format(rewardTime));
         attributes.put("source", "afdian".equals(source) ? "爱发电" : "表单提交");
         attributes.put("message",
             spec.getMessage() == null || spec.getMessage().isBlank()

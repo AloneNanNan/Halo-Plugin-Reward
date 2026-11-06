@@ -1,6 +1,7 @@
 package cn.nanzhiy.reward;
 
 import cn.nanzhiy.reward.extension.RewardRecord;
+import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import run.halo.app.extension.Scheme;
@@ -29,6 +30,11 @@ public class RewardPlugin extends BasePlugin {
     @Override
     public void start() {
         schemeManager.register(RewardRecord.class, indexSpecs -> {
+            // 按打赏时间排序要求该字段建索引；索引值走统一的回落口径，
+            // 未填写打赏时间的记录按入库时间参与排序。
+            indexSpecs.add(IndexSpecs.<RewardRecord, Instant>single("spec.rewardTime", Instant.class)
+                .indexFunc(RewardRecord::resolveRewardTime));
+
             indexSpecs.add(IndexSpecs.<RewardRecord, String>single("spec.status", String.class)
                 .indexFunc(record -> record.getSpec() == null ? null : record.getSpec().getStatus()));
 

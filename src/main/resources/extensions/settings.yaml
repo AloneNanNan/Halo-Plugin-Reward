@@ -138,4 +138,5 @@ spec:
         - $formkit: switch
           name: notifyOnAfdianOrder
           label: 爱发电新订单入库时通知管理员
+          help: 仅爱发电回调推送的订单会通知；后台手动同步不发送通知，避免导入历史订单时被连续提醒。
           value: true

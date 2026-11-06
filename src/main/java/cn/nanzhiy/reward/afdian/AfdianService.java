@@ -105,15 +105,18 @@ public class AfdianService {
      * @param order 订单数据（Webhook 或 API 返回的结构）
      */
     public Mono<RewardRecord> handleOrder(Map<String, Object> order) {
-        return handleOrder(order, true);
+        return handleOrder(order, true, true);
     }
 
     /**
      * @param verify 是否调用开放平台反查订单。手动同步的数据来自已签名的接口，可跳过反查省去一半请求。
+     * @param notify 是否发送新记录通知。手动同步一次可能拉回大量历史订单，逐条通知会变成消息轰炸。
      */
-    private Mono<RewardRecord> handleOrder(Map<String, Object> order, boolean verify) {
+    private Mono<RewardRecord> handleOrder(Map<String, Object> order, boolean verify,
+        boolean notify) {
         var tradeNo = str(order.get("out_trade_no"));
         if (!StringUtils.hasText(tradeNo)) {
+            log.warn("afdian order skipped: out_trade_no is blank");
             return Mono.empty();
         }
         return recordService.exists(recordName(tradeNo))
@@ -123,15 +126,21 @@ public class AfdianService {
                 }
                 return settingService.afdian().flatMap(settings -> {
                     if (!settings.isEnable()) {
+                        log.warn("afdian order skipped: afdian not enabled, tradeNo={}", tradeNo);
                         return Mono.<RewardRecord>empty();
                     }
                     return resolveToken(settings)
+                        .switchIfEmpty(Mono.<String>defer(() -> {
+                            log.warn("afdian order skipped: api token not configured, tradeNo={}",
+                                tradeNo);
+                            return Mono.empty();
+                        }))
                         .flatMap(token -> verify
                             ? verifyOrder(tradeNo, settings.getUserId(), token)
                             : Mono.just(Map.<String, Object>of("order", order)))
                         .flatMap(verified -> applySponsor(verified, settings))
                         .flatMap(data -> saveRecord(verifiedOrder(data),
-                            resolveSponsorFromData(data), settings));
+                            resolveSponsorFromData(data), settings, notify));
                 });
             });
     }
@@ -143,39 +152,53 @@ public class AfdianService {
     }
 
     /**
-     * 用开放平台接口反查订单，确认订单真实存在且支付成功。
+     * 用开放平台接口反查订单，确认单号一致、真实存在且支付成功。
+     * 每个失败分支都要留日志：平台已收到成功响应不会重推，静默丢弃将无从排查。
      */
     private Mono<Map<String, Object>> verifyOrder(String tradeNo, String userId, String token) {
         var params = "{\"page\":1,\"out_trade_no\":\"" + escapeJson(tradeNo) + "\"}";
         return afdianClient.call("query-order", params, userId, token)
             .flatMap(result -> {
                 if (AfdianClient.toInt(result.get("ec")) != 200) {
-                    log.warn("afdian query-order rejected: {}", result.get("em"));
+                    log.warn("afdian query-order rejected: {}, tradeNo={}",
+                        result.get("em"), tradeNo);
                     return Mono.empty();
                 }
-                var order = firstOrder(result);
+                var order = findOrder(result, tradeNo);
                 if (order == null) {
+                    // 刚支付就回调时查询接口可能还没可见，这里不能静默丢弃，否则平台已收到成功响应不会重推。
+                    log.warn("afdian order not found by out_trade_no: {}", tradeNo);
                     return Mono.empty();
                 }
                 if (AfdianClient.toInt(order.get("status")) != ORDER_STATUS_PAID) {
+                    log.warn("afdian order not paid: {}, status={}", tradeNo, order.get("status"));
                     return Mono.<Map<String, Object>>empty();
                 }
                 return Mono.just(Map.<String, Object>of("order", order));
             });
     }
 
+    /**
+     * 按单号在返回列表里精确匹配，不直接取第一条：
+     * 查询参数若被平台忽略或返回多条，取第一条会把别的订单入到当前单号名下。
+     */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> firstOrder(Map<String, Object> result) {
+    private Map<String, Object> findOrder(Map<String, Object> result, String tradeNo) {
         var data = result.get("data");
         if (!(data instanceof Map<?, ?> dataMap)) {
             return null;
         }
         var list = dataMap.get("list");
-        if (!(list instanceof List<?> items) || items.isEmpty()) {
+        if (!(list instanceof List<?> items)) {
             return null;
         }
-        var first = items.get(0);
-        return first instanceof Map<?, ?> ? (Map<String, Object>) first : null;
+        for (var item : items) {
+            if (item instanceof Map<?, ?> order
+                && tradeNo.equals(str(order.get("out_trade_no")))) {
+                return (Map<String, Object>) order;
+            }
+        }
+        return null;
     }
 
     /**
@@ -264,13 +287,12 @@ public class AfdianService {
     }
 
     private Mono<RewardRecord> saveRecord(Map<String, Object> order, Sponsor sponsor,
-        AfdianSettings settings) {
+        AfdianSettings settings, boolean notify) {
         var tradeNo = str(order.get("out_trade_no"));
-        if (!StringUtils.hasText(tradeNo)) {
-            return Mono.empty();
-        }
         var amount = parseAmount(order.get("total_amount"));
         if (amount == null) {
+            log.warn("afdian order skipped: invalid total_amount={}, tradeNo={}",
+                order.get("total_amount"), tradeNo);
             return Mono.empty();
         }
         var spec = new RewardRecord.Spec();
@@ -282,6 +304,7 @@ public class AfdianService {
             : String.valueOf(order.get("remark")), MAX_MESSAGE_LENGTH));
         spec.setTransactionNo(tradeNo);
         spec.setExternalId(tradeNo);
+        spec.setRewardTime(resolveOrderTime(order));
         spec.setSource("afdian");
         spec.setStatus(settings.isAutoApprove()
             ? RewardRecord.STATUS_CONFIRMED : RewardRecord.STATUS_PENDING);
@@ -295,7 +318,9 @@ public class AfdianService {
         return recordService.create(record)
             .doOnNext(saved -> {
                 log.info("afdian order saved: {}", tradeNo);
-                notificationService.notifyNewRecord(saved, "afdian");
+                if (notify) {
+                    notificationService.notifyNewRecord(saved, "afdian");
+                }
             });
     }
 
@@ -312,7 +337,7 @@ public class AfdianService {
                 .flatMap(token -> Flux.range(1, SYNC_MAX_PAGES)
                     .concatMap(page -> fetchOrders(settings, token, page))
                     .filter(order -> AfdianClient.toInt(order.get("status")) == ORDER_STATUS_PAID)
-                    .concatMap(order -> handleOrder(order, false)
+                    .concatMap(order -> handleOrder(order, false, false)
                         .onErrorResume(error -> {
                             log.warn("afdian order skipped: {}", error.getMessage());
                             return Mono.empty();
@@ -357,6 +382,29 @@ public class AfdianService {
             .flatMap(settings -> resolveToken(settings)
                 .flatMap(token -> afdianClient.ping(settings.getUserId(), token)))
             .defaultIfEmpty(false);
+    }
+
+    /**
+     * 爱发电官方文档的订单字段表未承诺返回时间字段，实测响应里存在秒级 create_time。
+     * 有则用，取不到就回落到订单到达时刻；不要在缺少该字段时中断入库。
+     */
+    private static Instant resolveOrderTime(Map<String, Object> order) {
+        var raw = order.get("create_time");
+        if (raw == null) {
+            return Instant.now();
+        }
+        try {
+            var value = Long.parseLong(String.valueOf(raw).trim());
+            // 0 与负数不是有效时间戳，直接换算会得到 1970 年并排到列表最末，必须回退。
+            if (value <= 0) {
+                return Instant.now();
+            }
+            // 10 位为秒、13 位为毫秒，按量级区分，避免整批订单时间偏差 1000 倍。
+            return value > 100_000_000_000L
+                ? Instant.ofEpochMilli(value) : Instant.ofEpochSecond(value);
+        } catch (NumberFormatException e) {
+            return Instant.now();
+        }
     }
 
     private static String recordName(String tradeNo) {

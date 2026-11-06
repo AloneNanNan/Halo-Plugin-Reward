@@ -171,7 +171,7 @@ Finder 返回响应式类型，模板中用 `th:with` 绑定后即可当普通�
 | `amount` | BigDecimal | 金额，关闭「墙面显示金额」时为 null |
 | `avatar` | String | 头像地址，未填为 null |
 | `message` | String | 留言，未填为 null |
-| `createdAt` | String | 提交日期，格式 `yyyy-MM-dd` |
+| `createdAt` | String | 打赏日期，格式 `yyyy-MM-dd`；未填写打赏时间时为记录入库日期 |
 
 #### RewardStatsVo
 

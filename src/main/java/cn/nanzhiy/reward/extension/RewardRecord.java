@@ -2,6 +2,7 @@ package cn.nanzhiy.reward.extension;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
+import java.time.Instant;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import run.halo.app.extension.AbstractExtension;
@@ -55,6 +56,9 @@ public class RewardRecord extends AbstractExtension {
         @Schema(description = "头像图片地址", maxLength = 500)
         private String avatar;
 
+        @Schema(description = "打赏实际发生时间，留空时按记录入库时间展示、排序与统计")
+        private Instant rewardTime;
+
         @Schema(description = "状态", allowableValues = {"PENDING", "CONFIRMED", "REJECTED"},
             defaultValue = STATUS_PENDING)
         private String status;
@@ -65,5 +69,20 @@ public class RewardRecord extends AbstractExtension {
 
         @Schema(description = "外部渠道单号，留档用；去重依赖 metadata.name", maxLength = 64)
         private String externalId;
+    }
+
+    /**
+     * 打赏时间：优先取站长填写的值，未填写时回落到 Halo 托管的入库时间。
+     * 入库时间不可写，因此所有对外展示、统计与排序都必须经过这里，不能直接读 metadata。
+     * 用于排序索引时同样按此口径计算，避免空值记录排到不确定的位置。
+     */
+    public static Instant resolveRewardTime(RewardRecord record) {
+        if (record == null) {
+            return null;
+        }
+        if (record.getSpec() != null && record.getSpec().getRewardTime() != null) {
+            return record.getSpec().getRewardTime();
+        }
+        return record.getMetadata() == null ? null : record.getMetadata().getCreationTimestamp();
     }
 }

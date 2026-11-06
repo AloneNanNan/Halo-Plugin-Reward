@@ -6,7 +6,7 @@ metadata:
 spec:
   enabled: false
   requires: ">=2.27.0"
-  version: 1.0.0-beta.1
+  version: 1.0.0-beta.2
   author:
     name: 楠南NanNan
     website: https://www.nanzhiy.cn

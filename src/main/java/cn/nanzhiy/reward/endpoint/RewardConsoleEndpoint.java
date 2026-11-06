@@ -4,6 +4,8 @@ import cn.nanzhiy.reward.extension.RewardRecord;
 import cn.nanzhiy.reward.service.RewardRecordService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -52,6 +54,9 @@ public class RewardConsoleEndpoint {
 
     private static final int MAX_BATCH_SIZE = 200;
 
+    /** 浏览器与服务端时钟可能有偏差，留出少量容差，避免刚选「此刻」就被判为未来时间。 */
+    private static final Duration REWARD_TIME_TOLERANCE = Duration.ofMinutes(5);
+
     /** 以这些字符开头的单元格会被表格软件当作公式执行。 */
     private static final String FORMULA_PREFIXES = "=+-@\t\r";
 
@@ -71,10 +76,10 @@ public class RewardConsoleEndpoint {
     public Mono<RewardRecord> create(@RequestBody RewardRecord.Spec spec) {
         if (spec.getAmount() == null || spec.getAmount().compareTo(BigDecimal.ZERO) <= 0
             || spec.getAmount().compareTo(MAX_AMOUNT) > 0) {
-            return Mono.error(new IllegalArgumentException("金额必须大于 0 且不超过 1000000"));
+            return badRequest("金额必须大于 0 且不超过 1000000");
         }
         if (spec.getNickname() == null || spec.getNickname().isBlank()) {
-            return Mono.error(new IllegalArgumentException("昵称不能为空"));
+            return badRequest("昵称不能为空");
         }
         if (spec.getStatus() == null || !ALLOWED_STATUS.contains(spec.getStatus())) {
             spec.setStatus(RewardRecord.STATUS_PENDING);
@@ -82,6 +87,12 @@ public class RewardConsoleEndpoint {
         if (spec.getMethod() == null || spec.getMethod().isBlank()) {
             spec.setMethod("wechat");
         }
+        var rewardTime = spec.getRewardTime() == null ? Instant.now() : spec.getRewardTime();
+        var timeError = rewardTimeError(rewardTime);
+        if (timeError != null) {
+            return badRequest(timeError);
+        }
+        spec.setRewardTime(rewardTime);
         spec.setSource("manual");
         var record = new RewardRecord();
         record.setSpec(spec);
@@ -92,14 +103,14 @@ public class RewardConsoleEndpoint {
     public Mono<Map<String, Object>> batchStatus(@RequestBody BatchStatusParam param) {
         var status = normalizeStatus(param.getStatus());
         if (!ALLOWED_STATUS.contains(status)) {
-            return Mono.error(new IllegalArgumentException("不支持的状态"));
+            return badRequest("不支持的状态");
         }
         var names = param.getNames() == null ? List.<String>of() : param.getNames();
         if (names.isEmpty()) {
             return Mono.just(Map.of("updated", 0));
         }
         if (names.size() > MAX_BATCH_SIZE) {
-            return Mono.error(new IllegalArgumentException("单次最多处理 " + MAX_BATCH_SIZE + " 条"));
+            return badRequest("单次最多处理 " + MAX_BATCH_SIZE + " 条");
         }
         return Flux.fromIterable(names)
             .concatMap(name -> recordService.updateStatus(name, status))
@@ -114,7 +125,7 @@ public class RewardConsoleEndpoint {
             return Mono.just(Map.of("deleted", 0));
         }
         if (names.size() > MAX_BATCH_SIZE) {
-            return Mono.error(new IllegalArgumentException("单次最多处理 " + MAX_BATCH_SIZE + " 条"));
+            return badRequest("单次最多处理 " + MAX_BATCH_SIZE + " 条");
         }
         return Flux.fromIterable(names)
             .concatMap(recordService::delete)
@@ -127,10 +138,16 @@ public class RewardConsoleEndpoint {
         @RequestBody RewardRecord.Spec spec) {
         if (spec.getAmount() != null && (spec.getAmount().compareTo(BigDecimal.ZERO) <= 0
             || spec.getAmount().compareTo(MAX_AMOUNT) > 0)) {
-            return Mono.error(new IllegalArgumentException("金额必须大于 0 且不超过 1000000"));
+            return badRequest("金额必须大于 0 且不超过 1000000");
         }
         if (spec.getStatus() != null && !ALLOWED_STATUS.contains(spec.getStatus())) {
-            return Mono.error(new IllegalArgumentException("不支持的状态"));
+            return badRequest("不支持的状态");
+        }
+        if (spec.getRewardTime() != null) {
+            var timeError = rewardTimeError(spec.getRewardTime());
+            if (timeError != null) {
+                return badRequest(timeError);
+            }
         }
         return recordService.updateSpec(name, spec);
     }
@@ -140,7 +157,7 @@ public class RewardConsoleEndpoint {
         @RequestBody StatusParam param) {
         var status = normalizeStatus(param.getStatus());
         if (!ALLOWED_STATUS.contains(status)) {
-            return Mono.error(new IllegalArgumentException("不支持的状态"));
+            return badRequest("不支持的状态");
         }
         return recordService.updateStatus(name, status);
     }
@@ -157,14 +174,13 @@ public class RewardConsoleEndpoint {
     public Mono<Void> export(ServerHttpResponse response) {
         return recordService.listAll().collectList().flatMap(records -> {
             var builder = new StringBuilder("\uFEFF");
-            builder.append("提交时间,昵称,金额,支付方式,留言,联系方式,交易单号,状态\n");
+            builder.append("打赏时间,昵称,金额,支付方式,留言,联系方式,交易单号,状态\n");
             for (var record : records) {
                 var spec = record.getSpec();
                 if (spec == null) {
                     continue;
                 }
-                builder.append(escape(record.getMetadata() == null
-                        ? null : record.getMetadata().getCreationTimestamp()))
+                builder.append(escape(RewardRecord.resolveRewardTime(record)))
                     .append(',')
                     .append(escape(spec.getNickname())).append(',')
                     .append(spec.getAmount() == null ? ""
@@ -202,6 +218,24 @@ public class RewardConsoleEndpoint {
             return '"' + text.replace("\"", "\"\"") + '"';
         }
         return text;
+    }
+
+    /**
+     * 参数错误统一走 400：抛 IllegalArgumentException 会被 WebFlux 当成 500，
+     * 前端只能显示「保存失败」，看不到具体原因。
+     */
+    private static <T> Mono<T> badRequest(String message) {
+        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, message));
+    }
+
+    /**
+     * 只拦未来时间。历史补录需要能把时间往前填到任意早，因此不设下限。
+     */
+    private static String rewardTimeError(Instant rewardTime) {
+        if (rewardTime.isAfter(Instant.now().plus(REWARD_TIME_TOLERANCE))) {
+            return "打赏时间不能晚于当前时间";
+        }
+        return null;
     }
 
     private static String normalizeStatus(String status) {

@@ -3,11 +3,17 @@ package cn.nanzhiy.reward.endpoint;
 import cn.nanzhiy.reward.afdian.AfdianService;
 import cn.nanzhiy.reward.extension.RewardRecord;
 import cn.nanzhiy.reward.support.RateLimiter;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.BodyExtractors;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
@@ -29,11 +35,24 @@ public class AfdianWebhookEndpoint implements CustomEndpoint {
     private static final Map<String, Object> OK = Map.of("ec", 200, "em", "");
 
     /**
-     * 回调来自爱发电的固定出口 IP，配额必须远高于其它接口，否则并发订单会被丢弃。
+     * 平台未约定回调的 Content-Type，因此按原始字节解析。
+     * 不能用 bodyToMono(Map.class)：它只认 application/json，其它类型会 415 后被吞成 200，订单静默丢失。
      */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+
+    /** 回调来源 IP 不固定，配额按来源 IP 独立计算。 */
     private static final int WEBHOOK_MAX_REQUESTS = 120;
 
     private static final Duration WEBHOOK_WINDOW = Duration.ofMinutes(1);
+
+    /**
+     * 回调体只有几百字节，限制上限避免伪造的超大请求把请求体整个拼进内存。
+     * 超限由 join 抛异常，走下面的 onErrorResume 记日志并返回成功。
+     */
+    private static final int MAX_BODY_BYTES = 64 * 1024;
 
     private final AfdianService afdianService;
 
@@ -56,26 +75,58 @@ public class AfdianWebhookEndpoint implements CustomEndpoint {
             .map(address -> address.getAddress().getHostAddress())
             .orElse("unknown");
         if (!rateLimiter.tryAcquire("afdian:" + ip, WEBHOOK_MAX_REQUESTS, WEBHOOK_WINDOW)) {
+            // 超限也返回成功，避免平台把失败当异常反复重推；漏掉的订单可由后台手动同步补齐。
             log.warn("afdian webhook dropped by rate limit, ip={}", ip);
             return ServerResponse.ok().bodyValue(OK);
         }
-        return request.bodyToMono(Map.class)
+        return DataBufferUtils.join(request.body(BodyExtractors.toDataBuffers()), MAX_BODY_BYTES)
+            .map(this::readBody)
+            .defaultIfEmpty("")
             .doOnNext(this::processAsync)
             .then(ServerResponse.ok().bodyValue(OK))
             .onErrorResume(error -> {
-                log.warn("afdian webhook parse failed: {}", error.getMessage());
+                log.warn("afdian webhook read failed: {}", error.getMessage());
                 return ServerResponse.ok().bodyValue(OK);
             });
     }
 
+    private String readBody(DataBuffer buffer) {
+        try {
+            var bytes = new byte[buffer.readableByteCount()];
+            buffer.read(bytes);
+            return new String(bytes, StandardCharsets.UTF_8);
+        } finally {
+            DataBufferUtils.release(buffer);
+        }
+    }
+
+    /**
+     * 结构异常一律记日志：平台已收到成功响应不会重推，静默丢弃将无从排查。
+     */
     @SuppressWarnings("unchecked")
-    private void processAsync(Map<String, Object> body) {
-        var data = body.get("data");
-        if (!(data instanceof Map<?, ?> dataMap)) {
+    private void processAsync(String body) {
+        if (body.isBlank()) {
+            log.warn("afdian webhook received empty body");
             return;
         }
-        var order = dataMap.get("order");
-        if (!(order instanceof Map<?, ?> orderMap)) {
+        Map<String, Object> root;
+        try {
+            root = MAPPER.readValue(body, MAP_TYPE);
+        } catch (Exception e) {
+            log.warn("afdian webhook body is not valid json: {}", e.getMessage());
+            return;
+        }
+        if (!(root.get("data") instanceof Map<?, ?> dataMap)) {
+            log.warn("afdian webhook missing data field");
+            return;
+        }
+        var type = dataMap.get("type");
+        if (type != null && !"order".equals(String.valueOf(type))) {
+            log.info("afdian webhook ignored: unsupported data type {}", type);
+            return;
+        }
+        if (!(dataMap.get("order") instanceof Map<?, ?> orderMap)) {
+            log.warn("afdian webhook missing data.order field");
             return;
         }
         afdianService.handleOrder((Map<String, Object>) orderMap)

@@ -34,6 +34,8 @@ interface RewardRecord {
     transactionNo?: string;
     avatar?: string;
     status?: string;
+    /** 未填写时回落到 creationTimestamp，与后端 resolveRewardTime 保持同一口径。 */
+    rewardTime?: string;
   };
 }
 
@@ -129,6 +131,19 @@ function openEdit(record: RewardRecord) {
   editVisible.value = true;
 }
 
+/**
+ * VButton 声明的 click 事件不携带原生事件，`@click.stop` 拿不到 event 会直接抛错，
+ * 既不执行处理函数也阻止不了冒泡；这里按点击目标判断，行内操作按钮带 reward-row-action，
+ * 标签兜底用来应对 VButton 将来不再渲染成 button 的情况。
+ */
+function onEntityClick(record: RewardRecord, event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".reward-row-action, button, a, input")) {
+    return;
+  }
+  openEdit(record);
+}
+
 function toggleSelectMode() {
   selectMode.value = !selectMode.value;
   selected.value = [];
@@ -161,6 +176,24 @@ async function changeStatus(record: RewardRecord, next: string) {
   }
 }
 
+/**
+ * 删除成功后立即本地摘除，避免紧接着重新拉列表把刚删的记录又带回来
+ * （Halo 删除后索引由后台异步回收，此时查询仍可能命中已删条目）。
+ * 当前页被删空且不是第一页时回退一页加载，其余情况等用户下次刷新对齐。
+ */
+function removeFromList(targets: RewardRecord[]) {
+  const removed = new Set(targets.map((item) => item.metadata.name));
+  const pendingRemoved = targets.filter((item) => item.spec.status === "PENDING").length;
+  records.value = records.value.filter((item) => !removed.has(item.metadata.name));
+  total.value = Math.max(total.value - targets.length, 0);
+  pendingTotal.value = Math.max(pendingTotal.value - pendingRemoved, 0);
+  selected.value = selected.value.filter((name) => !removed.has(name));
+  if (records.value.length === 0 && page.value > 1) {
+    page.value -= 1;
+    fetchRecords();
+  }
+}
+
 async function removeRecord(record: RewardRecord) {
   Dialog.warning({
     title: "是否确认删除该打赏记录？",
@@ -170,10 +203,7 @@ async function removeRecord(record: RewardRecord) {
       try {
         await axiosInstance.delete(`${API_BASE}/records/${record.metadata.name}`);
         Toast.success("已删除");
-        if (records.value.length === 1 && page.value > 1) {
-          page.value -= 1;
-        }
-        await fetchRecords();
+        removeFromList([record]);
       } catch {
         Toast.error("删除失败");
       }
@@ -202,21 +232,18 @@ function batchDelete() {
   if (!selected.value.length) {
     return;
   }
+  const targets = records.value.filter((item) => selected.value.includes(item.metadata.name));
   Dialog.warning({
-    title: `是否确认删除选中的 ${selected.value.length} 条记录？`,
+    title: `是否确认删除选中的 ${targets.length} 条记录？`,
     description: "删除之后将无法恢复。",
     confirmType: "danger",
     onConfirm: async () => {
-      const deletedCount = selected.value.length;
       try {
         await axiosInstance.post(`${API_BASE}/records/batch-delete`, {
-          names: selected.value,
+          names: targets.map((item) => item.metadata.name),
         });
         Toast.success("批量删除成功");
-        if (records.value.length <= deletedCount && page.value > 1) {
-          page.value -= 1;
-        }
-        await fetchRecords();
+        removeFromList(targets);
       } catch {
         Toast.error("批量删除失败");
       }
@@ -265,6 +292,17 @@ function formatAmount(amount?: number) {
 
 function formatTime(timestamp?: string) {
   return timestamp ? new Date(timestamp).toLocaleString() : "-";
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  wechat: "微信",
+  alipay: "支付宝",
+  afdian: "爱发电",
+};
+
+/** 未知取值原样展示，避免把将来新增的支付方式误标成微信。 */
+function methodLabel(value?: string) {
+  return value ? (METHOD_LABELS[value] ?? value) : "-";
 }
 
 function statusLabel(value?: string) {
@@ -386,7 +424,7 @@ onMounted(() => {
           :key="record.metadata.name"
           class="reward-entity"
           :is-selected="selected.includes(record.metadata.name)"
-          @click="openEdit(record)"
+          @click="onEntityClick(record, $event)"
         >
           <template v-if="selectMode" #checkbox>
             <input
@@ -411,8 +449,15 @@ onMounted(() => {
             </div>
           </template>
           <template #end>
-            <VEntityField :description="formatAmount(record.spec.amount)" />
-            <VEntityField :description="formatTime(record.metadata.creationTimestamp)" />
+            <VEntityField>
+              <template #description>
+                <span class="reward-amount">{{ formatAmount(record.spec.amount) }}</span>
+              </template>
+            </VEntityField>
+            <VEntityField :description="methodLabel(record.spec.method)" />
+            <VEntityField
+              :description="formatTime(record.spec.rewardTime || record.metadata.creationTimestamp)"
+            />
             <VEntityField>
               <template #description>
                 <VTag :theme="statusTheme(record.spec.status)">
@@ -423,25 +468,28 @@ onMounted(() => {
             <VSpace>
               <VButton
                 v-if="canManage && record.spec.status !== 'CONFIRMED'"
+                class="reward-row-action"
                 size="sm"
                 type="secondary"
-                @click.stop="changeStatus(record, 'CONFIRMED')"
+                @click="changeStatus(record, 'CONFIRMED')"
               >
                 确认
               </VButton>
               <VButton
                 v-if="canManage && record.spec.status !== 'REJECTED'"
+                class="reward-row-action"
                 size="sm"
                 type="secondary"
-                @click.stop="changeStatus(record, 'REJECTED')"
+                @click="changeStatus(record, 'REJECTED')"
               >
                 拒绝
               </VButton>
               <VButton
                 v-if="canManage"
+                class="reward-row-action"
                 size="sm"
                 type="danger"
-                @click.stop="removeRecord(record)"
+                @click="removeRecord(record)"
               >
                 删除
               </VButton>
@@ -545,6 +593,14 @@ onMounted(() => {
 
 .reward-alert__link:hover {
   text-decoration: underline;
+}
+
+/* 金额是列表里需要一眼看到的信息，视觉权重高于右侧的支付方式与时间。 */
+.reward-amount {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1f2328;
+  font-variant-numeric: tabular-nums;
 }
 
 .reward-item {

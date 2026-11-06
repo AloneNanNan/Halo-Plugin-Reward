@@ -14,6 +14,7 @@ import cn.nanzhiy.reward.vo.SubmitParam;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -239,6 +240,8 @@ public class RewardPublicEndpoint implements CustomEndpoint {
             settings.isEnableAvatar() ? clean(param.getAvatar(), MAX_AVATAR_LENGTH) : null);
         spec.setStatus(settings.isAutoApprove()
             ? RewardRecord.STATUS_CONFIRMED : RewardRecord.STATUS_PENDING);
+        // 访客不提供时间，避免把打赏时间伪造成任意历史日期。
+        spec.setRewardTime(Instant.now());
         spec.setSource("page");
 
         var record = new RewardRecord();

@@ -153,6 +153,8 @@ Content-Type: application/json
 | `avatar` | 否 | 头像地址，最长 500，仅当后台开启头像时保存 |
 | `captchaId` / `captchaCode` | 条件 | 后台开启验证码时必填 |
 
+打赏时间由服务端按提交时刻写入，**不接受访客指定**，避免把记录伪造成历史日期；需要补录历史打赏请走后台管理接口。
+
 成功响应：
 
 ```json
@@ -195,8 +197,10 @@ POST /apis/api.reward.nanzhiy.cn/v1alpha1/afdian/webhook
 处理逻辑：
 
 1. 立即返回成功结构（未返回时平台判定为失败）
-2. 异步调用 `query-order` 反查订单，确认真实存在且 `status = 2`
+2. 异步调用 `query-order` 反查订单，确认单号一致、真实存在且 `status = 2`
 3. 以 `afdian-{订单号}` 为记录名入库，天然幂等
+4. 请求体按原始字节解析，不依赖 `Content-Type`；结构异常、单号查不到、未支付、凭据缺失都会记一条 `warn` 日志，且不会入库
+5. 平台收到成功响应后不会重推，漏掉的订单需在后台点「同步爱发电」补齐
 
 ---
 
@@ -209,13 +213,13 @@ POST /apis/api.reward.nanzhiy.cn/v1alpha1/afdian/webhook
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/records?page=1&size=20&status=PENDING&keyword=张` | 列表，支持状态筛选与关键词搜索 |
-| POST | `/records` | 后台手动新增 |
-| PUT | `/records/{name}` | 编辑记录 |
+| POST | `/records` | 后台手动新增，`rewardTime` 可指定打赏时间，留空取当前时间 |
+| PUT | `/records/{name}` | 编辑记录，`rewardTime` 可改；不传表示不修改 |
 | PUT | `/records/{name}/status` | 单条改状态 |
 | PUT | `/records/batch-status` | 批量改状态 |
 | POST | `/records/batch-delete` | 批量删除 |
 | DELETE | `/records/{name}` | 删除单条 |
-| GET | `/records/export` | 导出 CSV（时间为服务器时区，字段以 `'` 前缀保护以免被表格软件当作公式执行） |
+| GET | `/records/export` | 导出 CSV，首列为打赏时间（未填写时为入库时间，服务器时区），字段以 `'` 前缀保护以免被表格软件当作公式执行 |
 | GET | `/afdian/ping` | 检测爱发电凭据 |
 | POST | `/afdian/sync` | 手动同步爱发电订单 |
 
