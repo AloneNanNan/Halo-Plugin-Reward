@@ -30,7 +30,7 @@ public class RewardFinderImpl implements RewardFinder {
     @Override
     public Mono<RewardConfigVo> getConfig() {
         return settingService.all().map(settings -> RewardConfigVo.from(settings.basic(),
-            settings.payment(), settings.records()));
+            settings.payment(), settings.records(), settings.afdian()));
     }
 
     @Override

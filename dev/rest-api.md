@@ -39,6 +39,7 @@ GET /apis/api.reward.nanzhiy.cn/v1alpha1/public/config
   "wechatQr": "/upload/wechat.png",
   "alipayQr": "/upload/alipay.png",
   "paymentTip": "扫码后请手动输入金额…",
+  "afdianPageUrl": "https://afdian.com/a/yourname",
   "enableRecordSubmit": true,
   "requireLogin": false,
   "allowMessage": true,

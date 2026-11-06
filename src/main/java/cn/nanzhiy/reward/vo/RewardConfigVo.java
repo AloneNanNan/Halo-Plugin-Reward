@@ -1,11 +1,13 @@
 package cn.nanzhiy.reward.vo;
 
+import cn.nanzhiy.reward.afdian.AfdianSettings;
 import cn.nanzhiy.reward.config.BasicSettings;
 import cn.nanzhiy.reward.config.PaymentSettings;
 import cn.nanzhiy.reward.config.RecordSettings;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Data;
+import org.springframework.util.StringUtils;
 
 /**
  * 前台与主题共用的公开配置视图。公开接口、页面路由与 Finder 都从这里取值，避免同一份字段在多处维护。
@@ -25,6 +27,9 @@ public class RewardConfigVo {
 
     private String paymentTip;
 
+    /** 爱发电主页地址，未启用或未填写时为空串，调用方无需判空。 */
+    private String afdianPageUrl;
+
     private boolean enableRecordSubmit;
 
     private boolean requireLogin;
@@ -40,7 +45,7 @@ public class RewardConfigVo {
     private boolean enableAvatar;
 
     public static RewardConfigVo from(BasicSettings basic, PaymentSettings payment,
-        RecordSettings records) {
+        RecordSettings records, AfdianSettings afdian) {
         var vo = new RewardConfigVo();
         vo.setTitle(basic.getPageTitle());
         vo.setIntro(basic.getPageIntro());
@@ -48,6 +53,9 @@ public class RewardConfigVo {
         vo.setWechatQr(payment.getWechatQr());
         vo.setAlipayQr(payment.getAlipayQr());
         vo.setPaymentTip(payment.getPaymentTip());
+        // 表单留空会反序列化成 null，hasText 同时拦住 null 与纯空白
+        var pageUrl = afdian.getPageUrl();
+        vo.setAfdianPageUrl(afdian.isEnable() && StringUtils.hasText(pageUrl) ? pageUrl : "");
         vo.setEnableRecordSubmit(records.isEnableRecordSubmit());
         vo.setRequireLogin(records.isRequireLogin());
         vo.setAllowMessage(records.isAllowMessage());
@@ -69,6 +77,7 @@ public class RewardConfigVo {
         map.put("wechatQr", wechatQr);
         map.put("alipayQr", alipayQr);
         map.put("paymentTip", paymentTip);
+        map.put("afdianPageUrl", afdianPageUrl);
         map.put("enableRecordSubmit", enableRecordSubmit);
         map.put("requireLogin", requireLogin);
         map.put("allowMessage", allowMessage);

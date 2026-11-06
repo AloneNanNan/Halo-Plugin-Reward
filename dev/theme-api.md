@@ -38,7 +38,7 @@ GET /reward
 | `reward.wechatQr` | String | 微信收款码地址 |
 | `reward.alipayQr` | String | 支付宝收款码地址 |
 | `reward.paymentTip` | String | 收款提示 |
-| `reward.afdianPageUrl` | String | 爱发电主页地址，未启用时为空串 |
+| `reward.afdianPageUrl` | String | 爱发电主页地址，未启用或未填写时为空串 |
 | `reward.enableRecordSubmit` | boolean | 是否允许访客提交 |
 | `reward.requireLogin` | boolean | 是否仅登录用户可提交 |
 | `reward.allowMessage` | boolean | 是否允许填写留言 |
@@ -132,7 +132,7 @@ document.getElementById('reward-form').addEventListener('submit', async (event) 
 
 | 方法 | 返回值 | 说明 |
 | --- | --- | --- |
-| `getConfig()` | `RewardConfigVo` | 页面配置，含标题、简介、二维码地址、各开关 |
+| `getConfig()` | `RewardConfigVo` | 页面配置，含标题、简介、二维码与爱发电地址、各开关 |
 | `listWall(page, size)` | `ListResult<WallItem>` | 赞助者墙分页，`size` 上限 50 |
 | `getStats()` | `RewardStatsVo` | 累计与本月统计 |
 
@@ -152,6 +152,7 @@ Finder 返回响应式类型，模板中用 `th:with` 绑定后即可当普通�
 | `wechatQr` | String | 微信收款码地址，未配置时为 null |
 | `alipayQr` | String | 支付宝收款码地址，未配置时为 null |
 | `paymentTip` | String | 收款提示 |
+| `afdianPageUrl` | String | 爱发电主页地址，未启用或未填写时为空串 |
 | `enableRecordSubmit` | boolean | 是否允许访客提交 |
 | `requireLogin` | boolean | 是否仅登录用户可提交 |
 | `allowMessage` | boolean | 是否允许填写留言 |

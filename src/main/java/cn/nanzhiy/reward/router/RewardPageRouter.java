@@ -48,9 +48,7 @@ public class RewardPageRouter {
     }
 
     private Mono<ServerResponse> renderPage(ServerRequest request) {
-        return Mono.zip(settingService.all(), settingService.afdian()).flatMap(tuple -> {
-            var settings = tuple.getT1();
-            var afdian = tuple.getT2();
+        return settingService.all().flatMap(settings -> {
             var basic = settings.basic();
             if (!basic.isEnable()) {
                 return ServerResponse.notFound().build();
@@ -61,14 +59,14 @@ public class RewardPageRouter {
                 ? recordService.listWall(1, size)
                 : Mono.just(new ListResult<RewardRecord>(1, size, 0L, List.of()));
             return wall.flatMap(result -> {
-                var page = new LinkedHashMap<String, Object>(
-                    RewardConfigVo.from(basic, settings.payment(), records).toMap());
+                var config = RewardConfigVo.from(basic, settings.payment(), records,
+                    settings.afdian());
+                var page = new LinkedHashMap<String, Object>(config.toMap());
                 page.put("showAmountOnWall", records.isShowAmountOnWall());
                 page.put("wallPageSize", size);
                 page.put("wallItems",
                     recordService.toWallItems(result.getItems(), records.isShowAmountOnWall()));
                 page.put("wallTotal", result.getTotal());
-                page.put("afdianPageUrl", afdian.isEnable() ? afdian.getPageUrl() : "");
 
                 var model = new HashMap<String, Object>();
                 model.put("reward", page);

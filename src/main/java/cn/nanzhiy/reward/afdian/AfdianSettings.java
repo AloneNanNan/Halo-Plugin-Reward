@@ -15,7 +15,7 @@ public class AfdianSettings {
     /** 存放 API Token 的 Halo Secret 名称。 */
     private String secretName = "";
 
-    /** 爱发电主页地址，配置后前台展示入口。 */
+    /** 爱发电主页地址，启用并填写后前台才展示入口。 */
     private String pageUrl = "";
 
     /** 订单入库后是否直接确认并展示。 */

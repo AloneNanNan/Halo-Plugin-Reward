@@ -205,7 +205,7 @@ Finder 提供三个方法：
 
 | 方法 | 返回 |
 | --- | --- |
-| `rewardFinder.getConfig()` | 标题、简介、微信/支付宝二维码地址、各开关 |
+| `rewardFinder.getConfig()` | 标题、简介、微信/支付宝二维码地址、爱发电主页地址、各开关 |
 | `rewardFinder.listWall(page, size)` | 赞助者墙分页（昵称、金额、头像、留言、日期） |
 | `rewardFinder.getStats()` | 累计与本月的人数、金额 |
 

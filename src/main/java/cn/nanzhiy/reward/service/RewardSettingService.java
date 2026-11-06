@@ -45,10 +45,12 @@ public class RewardSettingService {
     }
 
     public Mono<Settings> all() {
-        return Mono.zip(basic(), payment(), records())
-            .map(tuple -> new Settings(tuple.getT1(), tuple.getT2(), tuple.getT3()));
+        return Mono.zip(basic(), payment(), records(), afdian())
+            .map(tuple -> new Settings(tuple.getT1(), tuple.getT2(), tuple.getT3(),
+                tuple.getT4()));
     }
 
-    public record Settings(BasicSettings basic, PaymentSettings payment, RecordSettings records) {
+    public record Settings(BasicSettings basic, PaymentSettings payment, RecordSettings records,
+        AfdianSettings afdian) {
     }
 }

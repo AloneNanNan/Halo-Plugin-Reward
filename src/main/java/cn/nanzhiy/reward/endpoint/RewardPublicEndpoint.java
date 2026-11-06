@@ -128,7 +128,7 @@ public class RewardPublicEndpoint implements CustomEndpoint {
                     .bodyValue(Map.of("message", "打赏页面未启用"));
             }
             var config = RewardConfigVo.from(settings.basic(), settings.payment(),
-                settings.records());
+                settings.records(), settings.afdian());
             return isLoggedIn().flatMap(loggedIn -> {
                 var body = config.toMap();
                 body.put("loggedIn", loggedIn);

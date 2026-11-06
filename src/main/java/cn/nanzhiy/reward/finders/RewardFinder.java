@@ -12,7 +12,7 @@ import run.halo.app.extension.ListResult;
 public interface RewardFinder {
 
     /**
-     * 打赏页公开配置，包含标题、简介与微信/支付宝收款码地址。
+     * 打赏页公开配置，包含标题、简介、收款码地址、爱发电主页地址与各开关。
      */
     Mono<RewardConfigVo> getConfig();
 
