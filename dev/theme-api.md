@@ -49,6 +49,10 @@ GET /reward
 | `reward.wallPageSize` | int | 墙面每页条数 |
 | `reward.wallItems` | List | 墙面数据，字段见 [WallItem](#wallitem) |
 | `reward.wallTotal` | long | 墙面总条数 |
+| `reward.totalCount` | int | 累计支持人数（已确认记录数），取自 60 秒缓存的统计快照，墙面关闭时同样有值 |
+| `reward.totalAmount` | BigDecimal | 累计金额，不受「墙面显示金额」开关影响 |
+| `reward.monthCount` | int | 本月支持人数，仅统计有金额且打赏时间在本月的记录 |
+| `reward.monthAmount` | BigDecimal | 本月金额 |
 
 ---
 

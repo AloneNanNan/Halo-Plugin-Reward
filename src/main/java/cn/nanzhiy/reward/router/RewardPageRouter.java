@@ -58,7 +58,9 @@ public class RewardPageRouter {
             var wall = records.isWallEnabled()
                 ? recordService.listWall(1, size)
                 : Mono.just(new ListResult<RewardRecord>(1, size, 0L, List.of()));
-            return wall.flatMap(result -> {
+            return Mono.zip(wall, recordService.stats()).flatMap(tuple -> {
+                var result = tuple.getT1();
+                var stats = tuple.getT2();
                 var config = RewardConfigVo.from(basic, settings.payment(), records,
                     settings.afdian());
                 var page = new LinkedHashMap<String, Object>(config.toMap());
@@ -67,6 +69,11 @@ public class RewardPageRouter {
                 page.put("wallItems",
                     recordService.toWallItems(result.getItems(), records.isShowAmountOnWall()));
                 page.put("wallTotal", result.getTotal());
+                // 与 GET /public/stats 同源同口径，金额不受「墙面显示金额」开关影响
+                page.put("totalCount", stats.getTotalCount());
+                page.put("totalAmount", stats.getTotalAmount());
+                page.put("monthCount", stats.getMonthCount());
+                page.put("monthAmount", stats.getMonthAmount());
 
                 var model = new HashMap<String, Object>();
                 model.put("reward", page);
