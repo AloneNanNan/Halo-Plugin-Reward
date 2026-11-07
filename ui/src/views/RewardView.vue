@@ -70,6 +70,24 @@ const allSelected = computed(
   () => records.value.length > 0 && selected.value.length === records.value.length
 );
 
+/**
+ * 后端参数错误返回 ProblemDetail（detail），插件自造的校验错误返回 message，
+ * 两种都要读，否则用户只会看到「操作失败」。导出走 blob 响应，错误体同样是 blob。
+ */
+async function extractErrorMessage(error: unknown, fallback: string) {
+  const data = (error as { response?: { data?: unknown } })?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      return parsed?.detail || parsed?.message || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  const body = data as { detail?: string; message?: string } | undefined;
+  return body?.detail || body?.message || fallback;
+}
+
 async function fetchRecords() {
   loading.value = true;
   try {
@@ -166,14 +184,40 @@ function toggleOne(name: string) {
   }
 }
 
-async function changeStatus(record: RewardRecord, next: string) {
-  try {
-    await axiosInstance.put(`${API_BASE}/records/${record.metadata.name}/status`, { status: next });
-    Toast.success(next === "CONFIRMED" ? "已确认，将出现在赞助者墙" : "已拒绝");
-    await fetchRecords();
-  } catch {
-    Toast.error("操作失败");
-  }
+/**
+ * 状态变更确认弹窗，单条与批量共用一套文案与错误处理。
+ */
+function statusConfirmOptions(
+  status: string,
+  scope: string,
+  submit: () => Promise<void>
+) {
+  const label = status === "CONFIRMED" ? "确认" : "拒绝";
+  return {
+    title: `是否${label}${scope}？`,
+    description:
+      status === "CONFIRMED" ? "确认后将出现在前台赞助者墙。" : "拒绝后不会出现在赞助者墙。",
+    confirmType: status === "CONFIRMED" ? ("primary" as const) : ("danger" as const),
+    onConfirm: async () => {
+      try {
+        await submit();
+      } catch (error) {
+        Toast.error(await extractErrorMessage(error, `${label}失败`));
+      }
+    },
+  };
+}
+
+function changeStatus(record: RewardRecord, next: string) {
+  Dialog.warning(
+    statusConfirmOptions(next, "该打赏记录", async () => {
+      await axiosInstance.put(`${API_BASE}/records/${record.metadata.name}/status`, {
+        status: next,
+      });
+      Toast.success(next === "CONFIRMED" ? "已确认，将出现在赞助者墙" : "已拒绝");
+      await fetchRecords();
+    })
+  );
 }
 
 /**
@@ -204,28 +248,26 @@ async function removeRecord(record: RewardRecord) {
         await axiosInstance.delete(`${API_BASE}/records/${record.metadata.name}`);
         Toast.success("已删除");
         removeFromList([record]);
-      } catch {
-        Toast.error("删除失败");
+      } catch (error) {
+        Toast.error(await extractErrorMessage(error, "删除失败"));
       }
     },
   });
 }
 
-async function batchStatus(status: string) {
+function batchStatus(status: string) {
   if (!selected.value.length) {
     return;
   }
-  const label = status === "CONFIRMED" ? "确认" : "拒绝";
-  try {
-    await axiosInstance.put(`${API_BASE}/records/batch-status`, {
-      names: selected.value,
-      status,
-    });
-    Toast.success(`已批量${label} ${selected.value.length} 条记录`);
-    await fetchRecords();
-  } catch {
-    Toast.error(`批量${label}失败`);
-  }
+  const names = [...selected.value];
+  Dialog.warning(
+    statusConfirmOptions(status, `选中的 ${names.length} 条记录`, async () => {
+      await axiosInstance.put(`${API_BASE}/records/batch-status`, { names, status });
+      const label = status === "CONFIRMED" ? "确认" : "拒绝";
+      Toast.success(`已批量${label} ${names.length} 条记录`);
+      await fetchRecords();
+    })
+  );
 }
 
 function batchDelete() {
@@ -239,13 +281,13 @@ function batchDelete() {
     confirmType: "danger",
     onConfirm: async () => {
       try {
-        await axiosInstance.post(`${API_BASE}/records/batch-delete`, {
+        await axiosInstance.put(`${API_BASE}/records/batch-delete`, {
           names: targets.map((item) => item.metadata.name),
         });
         Toast.success("批量删除成功");
         removeFromList(targets);
-      } catch {
-        Toast.error("批量删除失败");
+      } catch (error) {
+        Toast.error(await extractErrorMessage(error, "批量删除失败"));
       }
     },
   });
@@ -254,15 +296,15 @@ function batchDelete() {
 async function syncAfdian() {
   syncing.value = true;
   try {
-    const { data } = await axiosInstance.post(`${API_BASE}/afdian/sync`);
+    const { data } = await axiosInstance.put(`${API_BASE}/afdian/sync`);
     if (data.message) {
       Toast.warning(data.message);
     } else {
       Toast.success(`同步完成，新增 ${data.synced ?? 0} 条记录`);
     }
     await fetchRecords();
-  } catch (error: any) {
-    Toast.error(error?.response?.data?.detail || "同步失败");
+  } catch (error) {
+    Toast.error(await extractErrorMessage(error, "同步失败"));
   } finally {
     syncing.value = false;
   }
@@ -271,6 +313,10 @@ async function syncAfdian() {
 async function exportCsv() {
   try {
     const { data } = await axiosInstance.get(`${API_BASE}/records/export`, {
+      params: {
+        status: statusFilter.value || undefined,
+        keyword: keyword.value || undefined,
+      },
       responseType: "blob",
     });
     const url = window.URL.createObjectURL(data as Blob);
@@ -279,8 +325,8 @@ async function exportCsv() {
     link.download = "reward-records.csv";
     link.click();
     window.URL.revokeObjectURL(url);
-  } catch {
-    Toast.error("导出失败");
+  } catch (error) {
+    Toast.error(await extractErrorMessage(error, "导出失败"));
   }
 }
 
@@ -532,6 +578,8 @@ onMounted(() => {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 0.75rem;
+  /* 窄屏下让两组控件换行，避免被挤出可视区域 */
+  flex-wrap: wrap;
 }
 
 .reward-toolbar__left {
@@ -629,7 +677,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 26rem;
+  max-width: 100%;
 }
 
 .reward-avatar {

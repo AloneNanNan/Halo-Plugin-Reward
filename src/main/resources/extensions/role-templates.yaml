@@ -9,16 +9,21 @@ metadata:
 rules:
   # 前台打赏页读取公开配置与赞助者墙
   - apiGroups: ["api.reward.nanzhiy.cn"]
-    resources: ["public", "plugin-reward/public"]
+    resources: ["public"]
     verbs: ["get"]
   # 访客提交打赏记录
   - apiGroups: ["api.reward.nanzhiy.cn"]
-    resources: ["records", "plugin-reward/records"]
+    resources: ["records"]
     verbs: ["create"]
   # 爱发电订单回调
-  - apiGroups: ["api.reward.nanzhiy.cn"]
-    resources: ["afdian"]
-    verbs: ["create"]
+  #
+  # 回调路径带 name 段（POST /afdian/webhook），Halo 会把这种「有 name 的 POST」
+  # 按非资源请求处理，只认 nonResourceURLs；apiGroups/resources 规则对它无效，
+  # 必须单独声明，否则匿名请求会被当成未认证而跳转登录页。
+  # 非资源请求的动词取小写 HTTP 方法，这里同时写上 create 兼容另一种口径。
+  - nonResourceURLs:
+      - "/apis/api.reward.nanzhiy.cn/v1alpha1/afdian/*"
+    verbs: ["post", "create"]
 ---
 apiVersion: v1alpha1
 kind: Role
@@ -34,7 +39,7 @@ metadata:
 rules:
   # 列表走 list；导出 CSV 是带 name 的 get，故查看角色只授予 list，导出归入管理角色
   - apiGroups: ["reward.nanzhiy.cn", "console.api.reward.nanzhiy.cn"]
-    resources: ["records", "plugin-reward/records"]
+    resources: ["records"]
     verbs: ["list"]
 ---
 apiVersion: v1alpha1
@@ -52,8 +57,13 @@ metadata:
       ["plugin:plugin-reward:records:manage"]
 rules:
   - apiGroups: ["reward.nanzhiy.cn", "console.api.reward.nanzhiy.cn"]
-    resources: ["records", "plugin-reward/records"]
+    resources: ["records"]
     verbs: ["get", "create", "update", "patch", "delete", "deletecollection"]
+  # 单条改状态走的是子资源路径，Halo 按「资源/子资源」匹配，只写 records 匹配不到
+  - apiGroups: ["console.api.reward.nanzhiy.cn"]
+    resources: ["records/status"]
+    verbs: ["update"]
+  # 同步订单是 PUT（带 name 的 POST 会被 Halo 降级成非资源请求，资源型规则失效）
   - apiGroups: ["console.api.reward.nanzhiy.cn"]
     resources: ["afdian"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "update"]

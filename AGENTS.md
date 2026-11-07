@@ -39,7 +39,7 @@ Halo 打赏插件（`plugin-reward`）：前台提供 `/reward` 页面，访客�
   - `finders/` — 主题侧 Finder（`rewardFinder`）
   - `router/` — `/reward` 页面路由
   - `service/` — 记录读写、配置读取、通知
-  - `support/` — 图形验证码、内存限流
+  - `support/` — 图形验证码、内存限流、字段清洗
   - `vo/` — 对外视图对象
 - `src/main/resources/`
   - `plugin.yaml` — 清单，**`spec.version` 禁止修改**
@@ -87,6 +87,10 @@ Halo 打赏插件（`plugin-reward`）：前台提供 `/reward` 页面，访客�
 
 新增/删除 `RewardRecord.Spec` 字段时，必须同时检查：模型 `extension/RewardRecord.java`、提交参数 `vo/SubmitParam.java`、公开接口组装 `endpoint/RewardPublicEndpoint.buildRecord()`、后台编辑 `service/RewardRecordService.updateSpec()` 与 `ui/src/components/RecordEditModal.vue`、CSV 导出 `endpoint/RewardConsoleEndpoint.export()`、以及 `README.md` 的字段表。历史上的 `tierLabel` 就是因为只加了模型、没有前台写入入口而被移除。
 
+访客提交与后台补录共用 `support/InputSanitizer`：长度上限与图片地址白名单都放在那里，两侧必须同步；新增访客可控字段时同步那里与 `endpoint/RewardConsoleEndpoint.validateCommonFields()`。
+
+超长字段的处理口径两侧不同，改动时别混：`InputSanitizer.clean()` 会**截断**，前台提交用它（访客超长静默截断，不报错）；后台写入走 `stripControlChars()` 只去控制字符，长度由 `validateCommonFields()` 按原始值判定并返回 400。若把清洗放在校验之前，超长会被先截断，校验就永远不会触发。
+
 ### 5.4 权限是两层的
 
 后台能力由「插件接口权限」和「Halo 自动生成的扩展 CRUD 权限」两层构成，规则写在 `extensions/role-templates.yaml`：
@@ -95,6 +99,18 @@ Halo 打赏插件（`plugin-reward`）：前台提供 `/reward` 页面，访客�
 - 管理角色（`plugin-reward-role-manage`）持有 `get` 与写操作。
 - 新增后台接口时必须给对应角色补规则，否则超管之外一律 403。
 - 前台控制台按钮的显示用 `utils.permission.has(["plugin:plugin-reward:records:manage"])` 判断，与后端规则保持同源。
+
+Halo 的 RBAC 是精确匹配（`*` 之外没有前缀与通配），写规则前先按 `RequestInfoFactory` 与 `RbacRequestEvaluation` 的口径推演路径：
+
+| 请求形态 | 解析结果 | 规则写法 |
+| --- | --- | --- |
+| `GET /records` | `resource=records`，无 name → `list` | `resources: ["records"]` + `verbs: ["list"]` |
+| `GET /records/export` | `resource=records`，`name=export` → `get` | 同上资源，动词写 `get` |
+| `PUT /records/{name}/status` | `resource=records`，子资源 `status` → `update` | 资源要写 `"records/status"`，只写 `records` 匹配不到 |
+| `POST /records/{name}` | 有 name 的 POST 会被降级为**非资源请求** | 改用 PUT；非资源请求只认 `nonResourceURLs` |
+| `POST /afdian/webhook` | 同上，且需要匿名访问 | 匿名角色用 `nonResourceURLs` 放行该路径 |
+
+因此：**后台带 name 的动作接口一律用 PUT**，子资源路径要在 `resources` 里写全「资源/子资源」，匿名回调只能用 `nonResourceURLs`（动词写小写 HTTP 方法）。
 
 ### 5.5 响应式与异常
 

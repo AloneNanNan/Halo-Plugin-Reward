@@ -94,8 +94,11 @@ async function onSubmit(values: Record<string, unknown>) {
     emit("saved");
     modal.value?.close();
     emit("close");
-  } catch (error: any) {
-    Toast.error(error?.response?.data?.detail || "保存失败");
+  } catch (error) {
+    // 后端参数错误返回 ProblemDetail（detail），插件自造的校验错误返回 message
+    const data = (error as { response?: { data?: { detail?: string; message?: string } } })
+      ?.response?.data;
+    Toast.error(data?.detail || data?.message || "保存失败");
   } finally {
     saving.value = false;
   }

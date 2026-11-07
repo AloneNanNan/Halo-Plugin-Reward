@@ -4,12 +4,18 @@ import cn.nanzhiy.reward.extension.RewardRecord;
 import cn.nanzhiy.reward.service.RewardNotificationService;
 import cn.nanzhiy.reward.service.RewardRecordService;
 import cn.nanzhiy.reward.service.RewardSettingService;
+import cn.nanzhiy.reward.support.InputSanitizer;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,12 +44,21 @@ public class AfdianService {
 
     private static final int MAX_SPONSOR_CACHE = 1024;
 
-    private static final int MAX_NICKNAME_LENGTH = 30;
-
-    private static final int MAX_MESSAGE_LENGTH = 200;
-
     /** 爱发电订单状态：2 表示已支付。 */
     private static final int ORDER_STATUS_PAID = 2;
+
+    /** metadata.name 长度上限，前缀 "afdian-" 占用 7 个字符。 */
+    private static final int MAX_NAME_SUFFIX_LENGTH = 56;
+
+    /** 规整后仍要放得下哈希后缀。 */
+    private static final int MAX_NORMALIZED_NAME_LENGTH = 40;
+
+    private static final Pattern VALID_NAME_SUFFIX =
+        Pattern.compile("[a-z0-9]([-a-z0-9.]*[a-z0-9])?");
+
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^a-z0-9]+");
+
+    private static final Pattern LEADING_TRAILING_DASH = Pattern.compile("(^-+)|(-+$)");
 
     private final AfdianClient afdianClient;
 
@@ -93,7 +108,7 @@ public class AfdianService {
         if (data != null) {
             var bytes = data.get("token");
             if (bytes != null && bytes.length > 0) {
-                return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                return new String(bytes, StandardCharsets.UTF_8);
             }
         }
         return null;
@@ -298,10 +313,11 @@ public class AfdianService {
         var spec = new RewardRecord.Spec();
         spec.setAmount(amount);
         spec.setMethod("afdian");
-        spec.setNickname(truncate(sponsor.name(), MAX_NICKNAME_LENGTH));
-        spec.setAvatar(StringUtils.hasText(sponsor.avatar()) ? sponsor.avatar().trim() : null);
-        spec.setMessage(truncate(order.get("remark") == null ? null
-            : String.valueOf(order.get("remark")), MAX_MESSAGE_LENGTH));
+        spec.setNickname(InputSanitizer.clean(sponsor.name(),
+            InputSanitizer.MAX_NICKNAME_LENGTH));
+        spec.setAvatar(InputSanitizer.safeImageUrl(sponsor.avatar()));
+        spec.setMessage(InputSanitizer.clean(order.get("remark") == null ? null
+            : String.valueOf(order.get("remark")), InputSanitizer.MAX_MESSAGE_LENGTH));
         spec.setTransactionNo(tradeNo);
         spec.setExternalId(tradeNo);
         spec.setRewardTime(resolveOrderTime(order));
@@ -408,15 +424,39 @@ public class AfdianService {
     }
 
     private static String recordName(String tradeNo) {
-        return "afdian-" + tradeNo;
+        var prefix = "afdian-";
+        // 常规单号保持原样，避免历史记录因改名而重复入库
+        if (isValidNameSuffix(tradeNo)) {
+            return prefix + tradeNo;
+        }
+        // 非法字符或超长时规整后附短哈希：规整结果可能撞名，哈希保证一一对应
+        var normalized = NON_NAME_CHARS.matcher(tradeNo.toLowerCase(Locale.ROOT))
+            .replaceAll("-");
+        normalized = LEADING_TRAILING_DASH.matcher(normalized).replaceAll("");
+        if (normalized.length() > MAX_NORMALIZED_NAME_LENGTH) {
+            normalized = normalized.substring(0, MAX_NORMALIZED_NAME_LENGTH);
+        }
+        var hash = sha256Hex(tradeNo).substring(0, 8);
+        return prefix + (normalized.isEmpty() ? "" : normalized + "-") + hash;
     }
 
-    private static String truncate(String value, int maxLength) {
-        if (!StringUtils.hasText(value)) {
-            return null;
+    /**
+     * metadata.name 只允许小写字母、数字、'-' 与 '.'，且首尾必须是字母数字。
+     */
+    private static boolean isValidNameSuffix(String tradeNo) {
+        return tradeNo != null
+            && tradeNo.length() <= MAX_NAME_SUFFIX_LENGTH
+            && VALID_NAME_SUFFIX.matcher(tradeNo).matches();
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            throw new IllegalStateException("哈希计算失败", e);
         }
-        var trimmed = value.trim();
-        return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
     }
 
     private static String str(Object value) {

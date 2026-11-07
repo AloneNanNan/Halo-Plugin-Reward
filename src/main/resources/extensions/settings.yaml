@@ -77,7 +77,7 @@ spec:
         - $formkit: switch
           name: enableAvatar
           label: 允许访客填写头像地址
-          help: 开启后前台显示头像地址输入框（选填），只接受 http(s) 图片地址；后台编辑记录时可直接从附件库选择。
+          help: 开启后前台显示头像地址输入框（选填），只接受 http(s) 或站内路径；后台编辑记录时可直接从附件库选择。
           value: false
         - $formkit: switch
           name: autoApprove

@@ -195,6 +195,8 @@ POST /apis/api.reward.nanzhiy.cn/v1alpha1/afdian/webhook
 { "ec": 200, "em": "" }
 ```
 
+该路径需要匿名可访问：Halo 会把「有名称段的 POST」按非资源请求处理，只认 `nonResourceURLs` 规则，插件已在匿名角色中显式放行该路径（`extensions/role-templates.yaml`）。若站点前置了 CDN / WAF，还需把该路径加入白名单。
+
 处理逻辑：
 
 1. 立即返回成功结构（未返回时平台判定为失败）
@@ -218,13 +220,15 @@ POST /apis/api.reward.nanzhiy.cn/v1alpha1/afdian/webhook
 | PUT | `/records/{name}` | 编辑记录，`rewardTime` 可改；不传表示不修改 |
 | PUT | `/records/{name}/status` | 单条改状态 |
 | PUT | `/records/batch-status` | 批量改状态 |
-| POST | `/records/batch-delete` | 批量删除 |
+| PUT | `/records/batch-delete` | 批量删除 |
 | DELETE | `/records/{name}` | 删除单条 |
-| GET | `/records/export` | 导出 CSV，首列为打赏时间（未填写时为入库时间，服务器时区），字段以 `'` 前缀保护以免被表格软件当作公式执行 |
+| GET | `/records/export?status=PENDING&keyword=张` | 导出 CSV，首列为打赏时间（未填写时为入库时间，服务器时区），字段以 `'` 前缀保护以免被表格软件当作公式执行；筛选参数与列表一致，单次最多导出 20000 条 |
 | GET | `/afdian/ping` | 检测爱发电凭据 |
-| POST | `/afdian/sync` | 手动同步爱发电订单 |
+| PUT | `/afdian/sync` | 手动同步爱发电订单 |
 
 `status` 取值：`PENDING`、`CONFIRMED`、`REJECTED`。
+
+> 带名称段的接口（`/records/{name}/status`、`/records/batch-status`、`/records/batch-delete`、`/afdian/sync`）使用 PUT 而不是 POST：Halo 会把「有名称段的 POST」降级为非资源请求，此时资源型权限规则不生效，非超级管理员会被拒绝。
 
 `keyword` 会匹配昵称、留言、交易单号三个字段。
 

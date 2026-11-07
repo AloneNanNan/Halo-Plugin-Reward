@@ -7,6 +7,7 @@ import cn.nanzhiy.reward.extension.RewardRecord;
 import cn.nanzhiy.reward.service.RewardNotificationService;
 import cn.nanzhiy.reward.service.RewardRecordService;
 import cn.nanzhiy.reward.service.RewardSettingService;
+import cn.nanzhiy.reward.support.InputSanitizer;
 import cn.nanzhiy.reward.support.RateLimiter;
 import cn.nanzhiy.reward.support.RewardCaptchaService;
 import cn.nanzhiy.reward.vo.RewardConfigVo;
@@ -16,7 +17,6 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -40,16 +40,6 @@ public class RewardPublicEndpoint implements CustomEndpoint {
 
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000");
 
-    private static final int MAX_NICKNAME_LENGTH = 30;
-
-    private static final int MAX_MESSAGE_LENGTH = 200;
-
-    private static final int MAX_CONTACT_LENGTH = 100;
-
-    private static final int MAX_TRANSACTION_NO_LENGTH = 64;
-
-    private static final int MAX_AVATAR_LENGTH = 500;
-
     private static final int MAX_WALL_SIZE = 50;
 
     private static final int SUBMIT_MAX_REQUESTS = 5;
@@ -63,8 +53,6 @@ public class RewardPublicEndpoint implements CustomEndpoint {
     private static final int STATS_MAX_REQUESTS = 60;
 
     private static final Duration STATS_WINDOW = Duration.ofMinutes(1);
-
-    private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cntrl}");
 
     private final RewardRecordService recordService;
 
@@ -222,22 +210,28 @@ public class RewardPublicEndpoint implements CustomEndpoint {
         spec.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
         spec.setMethod("alipay".equalsIgnoreCase(param.getMethod()) ? "alipay" : "wechat");
 
-        var nickname = clean(param.getNickname(), MAX_NICKNAME_LENGTH);
+        var nickname = InputSanitizer.clean(param.getNickname(), InputSanitizer.MAX_NICKNAME_LENGTH);
         if (nickname == null || nickname.isBlank()) {
             throw new IllegalArgumentException("请填写昵称");
         }
         spec.setNickname(nickname);
-        spec.setMessage(
-            settings.isAllowMessage() ? clean(param.getMessage(), MAX_MESSAGE_LENGTH) : null);
-        spec.setContact(clean(param.getContact(), MAX_CONTACT_LENGTH));
+        spec.setMessage(settings.isAllowMessage()
+            ? InputSanitizer.clean(param.getMessage(), InputSanitizer.MAX_MESSAGE_LENGTH) : null);
+        spec.setContact(InputSanitizer.clean(param.getContact(), InputSanitizer.MAX_CONTACT_LENGTH));
 
-        var transactionNo = clean(param.getTransactionNo(), MAX_TRANSACTION_NO_LENGTH);
+        var transactionNo = InputSanitizer.clean(param.getTransactionNo(),
+            InputSanitizer.MAX_TRANSACTION_NO_LENGTH);
         if (settings.isEnableTransactionNo() && (transactionNo == null || transactionNo.isBlank())) {
             throw new IllegalArgumentException("请填写交易单号");
         }
         spec.setTransactionNo(settings.isEnableTransactionNo() ? transactionNo : null);
-        spec.setAvatar(
-            settings.isEnableAvatar() ? clean(param.getAvatar(), MAX_AVATAR_LENGTH) : null);
+        var avatar = settings.isEnableAvatar()
+            ? InputSanitizer.clean(param.getAvatar(), InputSanitizer.MAX_AVATAR_LENGTH) : null;
+        if (avatar != null && InputSanitizer.safeImageUrl(avatar) == null) {
+            // 只放行 http(s) 与站内路径，避免 javascript: 之类的协议进入 img 的 src
+            throw new IllegalArgumentException("头像地址不合法，仅支持 http(s) 图片地址");
+        }
+        spec.setAvatar(avatar);
         spec.setStatus(settings.isAutoApprove()
             ? RewardRecord.STATUS_CONFIRMED : RewardRecord.STATUS_PENDING);
         // 访客不提供时间，避免把打赏时间伪造成任意历史日期。
@@ -247,20 +241,6 @@ public class RewardPublicEndpoint implements CustomEndpoint {
         var record = new RewardRecord();
         record.setSpec(spec);
         return record;
-    }
-
-    /**
-     * 去除控制字符并限制长度，防止异常内容进入存储与页面。
-     */
-    private String clean(String value, int maxLength) {
-        if (value == null) {
-            return null;
-        }
-        var cleaned = CONTROL_CHARS.matcher(value).replaceAll("").trim();
-        if (cleaned.isEmpty()) {
-            return null;
-        }
-        return cleaned.length() > maxLength ? cleaned.substring(0, maxLength) : cleaned;
     }
 
     private Mono<Boolean> isLoggedIn() {

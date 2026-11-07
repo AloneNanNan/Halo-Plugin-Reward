@@ -5,7 +5,7 @@ import cn.nanzhiy.reward.extension.RewardRecord;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -28,7 +28,13 @@ public class AfdianConsoleEndpoint {
             .map(ok -> Map.of("ok", ok));
     }
 
-    @PostMapping("/sync")
+    /**
+     * 手动同步历史订单。
+     *
+     * <p>用 PUT 而不是 POST：Halo 会把「带 name 段的 POST」按非资源请求处理，
+     * 资源型权限规则对它不生效，非超管角色会被拒绝。</p>
+     */
+    @PutMapping("/sync")
     public Mono<Map<String, Object>> sync() {
         return afdianService.syncOrders()
             .map(count -> {

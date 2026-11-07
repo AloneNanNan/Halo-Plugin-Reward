@@ -7,6 +7,7 @@ import static run.halo.app.extension.index.query.Queries.equal;
 import static run.halo.app.extension.index.query.Queries.or;
 
 import cn.nanzhiy.reward.extension.RewardRecord;
+import cn.nanzhiy.reward.support.InputSanitizer;
 import cn.nanzhiy.reward.vo.RewardStatsVo;
 import cn.nanzhiy.reward.vo.WallItem;
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import run.halo.app.extension.ListResult;
 import run.halo.app.extension.Metadata;
 import run.halo.app.extension.PageRequestImpl;
 import run.halo.app.extension.ReactiveExtensionClient;
+import run.halo.app.extension.index.query.Condition;
 
 /**
  * 打赏记录读写。
@@ -71,6 +74,26 @@ public class RewardRecordService {
      * 后台分页查询，status 为空表示全部。
      */
     public Mono<ListResult<RewardRecord>> list(String status, String keyword, int page, int size) {
+        var options = ListOptions.builder()
+            .fieldQuery(buildQuery(status, keyword))
+            .build();
+        return client.listBy(RewardRecord.class, options,
+            PageRequestImpl.of(page, size, DEFAULT_SORT));
+    }
+
+    /**
+     * 与 {@link #list} 同口径的全量查询，供 CSV 导出使用。
+     */
+    public Flux<RewardRecord> listAll(String status, String keyword) {
+        return client.listAll(RewardRecord.class, ListOptions.builder()
+            .fieldQuery(buildQuery(status, keyword))
+            .build(), DEFAULT_SORT);
+    }
+
+    /**
+     * 状态与关键词的组合条件，列表与导出共用，避免两处口径漂移。
+     */
+    private static Condition buildQuery(String status, String keyword) {
         var statusCondition = status == null || status.isBlank()
             ? empty() : equal("spec.status", status);
         var safeKeyword = keyword == null ? "" : keyword.trim();
@@ -84,11 +107,7 @@ public class RewardRecordService {
                 contains("spec.message", safeKeyword),
                 contains("spec.transactionNo", safeKeyword)
             );
-        var options = ListOptions.builder()
-            .fieldQuery(and(statusCondition, keywordCondition))
-            .build();
-        return client.listBy(RewardRecord.class, options,
-            PageRequestImpl.of(page, size, DEFAULT_SORT));
+        return and(statusCondition, keywordCondition);
     }
 
     /**
@@ -145,11 +164,12 @@ public class RewardRecordService {
                 if (patch.getRewardTime() != null) {
                     spec.setRewardTime(patch.getRewardTime());
                 }
-                if (patch.getMethod() != null) {
-                    spec.setMethod(patch.getMethod());
+                if (patch.getMethod() != null && !patch.getMethod().isBlank()) {
+                    spec.setMethod(patch.getMethod().toLowerCase(Locale.ROOT));
                 }
-                if (patch.getStatus() != null) {
-                    spec.setStatus(patch.getStatus());
+                if (patch.getStatus() != null && !patch.getStatus().isBlank()) {
+                    // 状态存大写：赞助者墙与统计都按 spec.status 精确匹配
+                    spec.setStatus(patch.getStatus().toUpperCase(Locale.ROOT));
                 }
                 return client.update(record)
                     .doOnNext(updated -> invalidateStats());
@@ -178,10 +198,6 @@ public class RewardRecordService {
         return client.fetch(RewardRecord.class, name)
             .flatMap(client::delete)
             .doOnNext(deleted -> invalidateStats());
-    }
-
-    public Flux<RewardRecord> listAll() {
-        return client.listAll(RewardRecord.class, ListOptions.builder().build(), DEFAULT_SORT);
     }
 
     public Mono<Long> countByStatus(String status) {
@@ -253,7 +269,7 @@ public class RewardRecordService {
             item.setNickname(nickname);
             item.setInitial(initial(nickname));
             item.setAmount(showAmount ? spec.getAmount() : null);
-            item.setAvatar(safeImageUrl(spec.getAvatar()));
+            item.setAvatar(InputSanitizer.safeImageUrl(spec.getAvatar()));
             item.setMessage(StringUtils.hasText(spec.getMessage()) ? spec.getMessage() : null);
             var rewardTime = RewardRecord.resolveRewardTime(record);
             if (rewardTime != null) {
@@ -273,17 +289,5 @@ public class RewardRecordService {
             return "匿";
         }
         return new String(Character.toChars(nickname.codePointAt(0)));
-    }
-
-    private static String safeImageUrl(String url) {
-        if (!StringUtils.hasText(url)) {
-            return null;
-        }
-        var trimmed = url.trim();
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")
-            || trimmed.startsWith("/")) {
-            return trimmed;
-        }
-        return null;
     }
 }
