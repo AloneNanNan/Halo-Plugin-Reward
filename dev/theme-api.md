@@ -22,6 +22,9 @@ GET /reward
 - 自动套用当前主题的页头与页脚（依赖 Halo 2.26.0+ 的 `layout` 契约）
 - 插件设置中关闭「启用打赏页面」后返回 404
 
+适配效果参考（[楠枝小笺](https://www.nanzhiy.cn/reward)）：
+![打赏页套用主题外壳](./images/theme-reward-page.png)
+
 ### 模板覆盖
 
 在主题的 `templates/` 目录下放一个 `reward.html`，插件会自动改用主题模板渲染（`TemplateNameResolver` 的默认行为）。
@@ -68,6 +71,10 @@ GET /reward
 
 该片段会自动引入所需脚本，按钮样式走内联，不受主题 CSS 影响。
 
+效果参考：
+
+![插件模态框](./images/reward-modal.png)
+
 不想用片段时，也可以手动引入脚本后自己放按钮：
 
 ```html
@@ -96,6 +103,10 @@ window.RewardModal.close();  // 关闭
 ### 方式二：自建表单 + REST API
 
 如果主题要完全自定义表单，需要自己调用 [公开 API](./rest-api.md#提交打赏记录)：
+
+适配效果参考（[楠枝小笺](https://www.nanzhiy.cn/reward)）：
+
+![主题自建表单模态框](./images/theme-custom-form-modal.png)
 
 ```html
 <form id="reward-form">
