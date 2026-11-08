@@ -81,7 +81,7 @@ Halo 打赏插件（`plugin-reward`）：前台提供 `/reward` 页面，访客�
 
 ### 5.2 配置的单一组装点
 
-`vo/RewardConfigVo.from(basic, payment, records)` 是公开配置的唯一来源，`toMap()` 供 `GET /public/config` 使用；`RewardPageRouter` 与 `RewardFinderImpl` 都复用它。新增设置项要同步：`extensions/settings.yaml` 的表单项 → `config/` 的字段 → `RewardConfigVo.from()` → 需要暴露时加 `toMap()` → `dev/theme-api.md` 与 `README.md` 的表格。不要在端点里手拼 Map。
+`vo/RewardConfigVo.from(basic, payment, records, afdian)` 是公开配置的唯一来源，`toMap()` 供 `GET /public/config` 使用；`RewardPageRouter` 与 `RewardFinderImpl` 都复用它。新增设置项要同步：`extensions/settings.yaml` 的表单项 → `config/` 的字段 → `RewardConfigVo.from()` → 需要暴露时加 `toMap()` → `dev/theme-api.md` 与 `README.md` 的表格。不要在端点里手拼 Map。
 
 ### 5.3 记录字段的同步点
 

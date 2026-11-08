@@ -11,6 +11,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
@@ -65,7 +66,9 @@ public class AfdianClient {
             .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {
             })
             .timeout(TIMEOUT)
-            .retryWhen(Retry.backoff(1, Duration.ofMillis(600)))
+            // 4xx 是请求本身不合法，重试不会成功；超时与 5xx 才值得再试一次
+            .retryWhen(Retry.backoff(1, Duration.ofMillis(600))
+                .filter(error -> !isClientError(error)))
             .onErrorResume(error -> {
                 log.warn("afdian api {} failed on {}: {}", apiName, DOMAINS[domainIndex],
                     error.getMessage());
@@ -89,6 +92,11 @@ public class AfdianClient {
 
     private static String quote(String value) {
         return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private static boolean isClientError(Throwable error) {
+        return error instanceof WebClientResponseException response
+            && response.getStatusCode().is4xxClientError();
     }
 
     /**

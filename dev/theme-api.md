@@ -45,6 +45,7 @@ GET /reward
 | `reward.enableRecordSubmit` | boolean | 是否允许访客提交 |
 | `reward.requireLogin` | boolean | 是否仅登录用户可提交 |
 | `reward.allowMessage` | boolean | 是否允许填写留言 |
+| `reward.enableCaptcha` | boolean | 是否要求填写图形验证码 |
 | `reward.enableTransactionNo` | boolean | 是否要求填写交易单号 |
 | `reward.enableAvatar` | boolean | 是否允许填写头像 |
 | `reward.wallEnabled` | boolean | 是否展示赞助者墙 |
@@ -52,10 +53,10 @@ GET /reward
 | `reward.wallPageSize` | int | 墙面每页条数 |
 | `reward.wallItems` | List | 墙面数据，字段见 [WallItem](#wallitem) |
 | `reward.wallTotal` | long | 墙面总条数 |
-| `reward.totalCount` | int | 累计支持人数（已确认记录数），取自 60 秒缓存的统计快照，墙面关闭时同样有值 |
-| `reward.totalAmount` | BigDecimal | 累计金额，不受「墙面显示金额」开关影响 |
+| `reward.totalCount` | int | 累计支持人数（已确认记录数），取自服务端统计快照，墙面关闭时同样有值 |
+| `reward.totalAmount` | BigDecimal | 累计金额，不受「墙面显示金额」开关影响，也无法通过插件开关关闭；不需要展示时不要在模板中输出 |
 | `reward.monthCount` | int | 本月支持人数，仅统计有金额且打赏时间在本月的记录 |
-| `reward.monthAmount` | BigDecimal | 本月金额 |
+| `reward.monthAmount` | BigDecimal | 本月金额，口径同 `reward.totalAmount` |
 
 ---
 
@@ -149,7 +150,7 @@ document.getElementById('reward-form').addEventListener('submit', async (event) 
 | --- | --- | --- |
 | `getConfig()` | `RewardConfigVo` | 页面配置，含标题、简介、二维码与爱发电地址、各开关 |
 | `listWall(page, size)` | `ListResult<WallItem>` | 赞助者墙分页，`size` 上限 50 |
-| `getStats()` | `RewardStatsVo` | 累计与本月统计 |
+| `getStats()` | `RewardStatsVo` | 累计与本月统计，含金额；对应接口匿名可访问，不需要展示时不要调用 |
 
 Finder 返回响应式类型，模板中用 `th:with` 绑定后即可当普通对象使用。
 

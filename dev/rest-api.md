@@ -25,6 +25,18 @@
 
 所有响应均不包含联系方式、交易单号等后台字段。
 
+公共接口按来源 IP 独立限流：
+
+| 接口 | 配额 |
+| --- | --- |
+| `POST /records` | 每 IP 10 分钟 5 次 |
+| `GET /public/captcha` | 每 IP 1 分钟 10 次 |
+| `GET /public/config` | 每 IP 1 分钟 60 次 |
+| `GET /public/wall` | 每 IP 1 分钟 120 次 |
+| `GET /public/stats` | 每 IP 1 分钟 60 次 |
+
+「启用打赏页面」开关只影响 `/reward` 页面、`GET /public/config`、`GET /public/captcha` 与 `POST /records`；`GET /public/wall` 与 `GET /public/stats` 不受该开关影响，便于主题在其它页面展示数据。
+
 ### 获取页面配置
 
 ```
@@ -69,6 +81,7 @@ GET /apis/api.reward.nanzhiy.cn/v1alpha1/public/wall?page=1&size=10
   "items": [
     {
       "nickname": "张三",
+      "initial": "张",
       "amount": 18.00,
       "avatar": "https://cdn.example.com/a.png",
       "message": "文章很有帮助",
@@ -91,7 +104,9 @@ GET /apis/api.reward.nanzhiy.cn/v1alpha1/public/wall?page=1&size=10
 GET /apis/api.reward.nanzhiy.cn/v1alpha1/public/stats
 ```
 
-> 统计结果在服务端缓存 60 秒，新的打赏确认后最迟 1 分钟反映到数字上。
+> 统计结果在服务端缓存 60 秒，写操作后缓存立即失效。
+>
+> 金额字段不受「在赞助者墙显示金额」开关控制，且接口匿名可访问；不需要公开收入数据时，请不要在主题中调用它。
 
 ```json
 {
@@ -121,6 +136,7 @@ GET /apis/api.reward.nanzhiy.cn/v1alpha1/public/captcha
 | 使用次数 | 一次性，校验后立即失效 |
 | 大小写 | 不区分 |
 | 生成限流 | 每 IP 每分钟最多 10 张，超出返回 `429` |
+| 总开关 | 「启用打赏页面」关闭时直接返回 `404`，不消耗限流配额 |
 
 ### 提交打赏记录
 
@@ -179,7 +195,7 @@ Content-Type: application/json
 
 | 状态码 | 场景 |
 | --- | --- |
-| 400 | 参数校验失败（金额非法、昵称过长、验证码错误、未登录提交等） |
+| 400 | 参数校验失败（金额非法、昵称过长、验证码错误、未登录提交、请求体不是合法 JSON 等） |
 | 429 | 提交过于频繁（每 IP 10 分钟 5 次）或验证码获取过于频繁（每 IP 1 分钟 10 次） |
 | 500 | 服务端异常（写库失败、验证码渲染失败等），`message` 为通用提示 |
 
@@ -227,6 +243,8 @@ POST /apis/api.reward.nanzhiy.cn/v1alpha1/afdian/webhook
 | PUT | `/afdian/sync` | 手动同步爱发电订单 |
 
 `status` 取值：`PENDING`、`CONFIRMED`、`REJECTED`。
+
+金额上限 `1000000`，最多两位小数；字段超长按原始值校验并返回 `400`，不会静默截断。
 
 > 带名称段的接口（`/records/{name}/status`、`/records/batch-status`、`/records/batch-delete`、`/afdian/sync`）使用 PUT 而不是 POST：Halo 会把「有名称段的 POST」降级为非资源请求，此时资源型权限规则不生效，非超级管理员会被拒绝。
 

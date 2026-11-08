@@ -59,6 +59,9 @@ public class RewardRecordService {
 
     private final AtomicReference<CachedStats> statsCache = new AtomicReference<>();
 
+    /** 缓存失效瞬间可能有多个请求同时到达，复用同一个在途查询，避免并发全表扫描。 */
+    private volatile Mono<RewardStatsVo> statsInFlight;
+
     private record CachedStats(RewardStatsVo stats, Instant cachedAt) {
     }
 
@@ -68,6 +71,7 @@ public class RewardRecordService {
      */
     private void invalidateStats() {
         statsCache.set(null);
+        statsInFlight = null;
     }
 
     /**
@@ -216,13 +220,34 @@ public class RewardRecordService {
             && Duration.between(cached.cachedAt(), Instant.now()).compareTo(STATS_TTL) < 0) {
             return Mono.just(cached.stats());
         }
-        var options = ListOptions.builder()
-            .fieldQuery(equal("spec.status", RewardRecord.STATUS_CONFIRMED))
-            .build();
-        return client.listAll(RewardRecord.class, options, Sort.unsorted())
-            .collectList()
-            .map(this::toStats)
-            .doOnNext(stats -> statsCache.set(new CachedStats(stats, Instant.now())));
+        return Mono.defer(this::loadStatsOnce);
+    }
+
+    /**
+     * 全表扫描只允许一个在途查询：缓存刚失效时并发请求共用同一个 Mono。
+     * doFinally 在源完成后清空引用，下一次过期才会重新查询；极端并发下可能多扫一次，不影响结果正确性。
+     */
+    private Mono<RewardStatsVo> loadStatsOnce() {
+        var inFlight = statsInFlight;
+        if (inFlight != null) {
+            return inFlight;
+        }
+        synchronized (this) {
+            if (statsInFlight != null) {
+                return statsInFlight;
+            }
+            var options = ListOptions.builder()
+                .fieldQuery(equal("spec.status", RewardRecord.STATUS_CONFIRMED))
+                .build();
+            var mono = client.listAll(RewardRecord.class, options, Sort.unsorted())
+                .collectList()
+                .map(this::toStats)
+                .doOnNext(stats -> statsCache.set(new CachedStats(stats, Instant.now())))
+                .doFinally(signal -> statsInFlight = null)
+                .cache();
+            statsInFlight = mono;
+            return mono;
+        }
     }
 
     private RewardStatsVo toStats(List<RewardRecord> records) {

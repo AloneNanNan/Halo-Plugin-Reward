@@ -8,6 +8,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +63,9 @@ public class RewardNotificationService {
 
     private final AtomicReference<CachedAdmins> adminCache = new AtomicReference<>();
 
+    /** 已成功订阅的管理员，避免每条新记录都把全部管理员重新写一遍订阅。 */
+    private final Set<String> subscribedAdmins = ConcurrentHashMap.newKeySet();
+
     private record CachedAdmins(List<String> names, Instant cachedAt) {
     }
 
@@ -92,6 +97,7 @@ public class RewardNotificationService {
      */
     private Mono<Void> subscribeAll(List<String> names) {
         return Flux.fromIterable(names)
+            .filter(name -> !subscribedAdmins.contains(name))
             .flatMap(this::subscribe)
             .then();
     }
@@ -104,6 +110,7 @@ public class RewardNotificationService {
         var subscriber = new Subscription.Subscriber();
         subscriber.setName(UserIdentity.of(name).name());
         return notificationCenter.subscribe(subscriber, interestReason)
+            .doOnSuccess(ignored -> subscribedAdmins.add(name))
             .onErrorResume(error -> {
                 log.debug("subscribe notification for {} failed: {}", name, error.getMessage());
                 return Mono.empty();

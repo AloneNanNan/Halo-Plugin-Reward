@@ -22,6 +22,9 @@ public class RewardRecord extends AbstractExtension {
 
     public static final String GROUP = "reward.nanzhiy.cn";
 
+    /** 单笔金额上限，公开提交与后台补录共用，避免两处口径漂移。 */
+    public static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000");
+
     public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_CONFIRMED = "CONFIRMED";
     public static final String STATUS_REJECTED = "REJECTED";

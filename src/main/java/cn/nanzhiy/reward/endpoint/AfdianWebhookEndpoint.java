@@ -76,7 +76,8 @@ public class AfdianWebhookEndpoint implements CustomEndpoint {
             .orElse("unknown");
         if (!rateLimiter.tryAcquire("afdian:" + ip, WEBHOOK_MAX_REQUESTS, WEBHOOK_WINDOW)) {
             // 超限也返回成功，避免平台把失败当异常反复重推；漏掉的订单可由后台手动同步补齐。
-            log.warn("afdian webhook dropped by rate limit, ip={}", ip);
+            // 不记录来源 IP：限流键只在内存中短暂保留，写进日志会与 README「不采集 IP」的说明冲突。
+            log.warn("afdian webhook dropped by rate limit");
             return ServerResponse.ok().bodyValue(OK);
         }
         return DataBufferUtils.join(request.body(BodyExtractors.toDataBuffers()), MAX_BODY_BYTES)

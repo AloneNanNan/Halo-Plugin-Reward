@@ -19,12 +19,14 @@ import java.time.Instant;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.codec.DecodingException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
+import org.springframework.web.server.ServerWebInputException;
 import reactor.core.publisher.Mono;
 import run.halo.app.core.extension.endpoint.CustomEndpoint;
 import run.halo.app.extension.GroupVersion;
@@ -38,9 +40,17 @@ import run.halo.app.infra.AnonymousUserConst;
 @RequiredArgsConstructor
 public class RewardPublicEndpoint implements CustomEndpoint {
 
-    private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000");
-
     private static final int MAX_WALL_SIZE = 50;
+
+    /** 前台每次打开弹窗取一次配置，浏览器侧缓存 60 秒，60 次/分钟足够刷新且能挡住脚本探测。 */
+    private static final int CONFIG_MAX_REQUESTS = 60;
+
+    private static final Duration CONFIG_WINDOW = Duration.ofMinutes(1);
+
+    /** 墙面「加载更多」每次取一页，120 次/分钟覆盖连续翻页并留出余量。 */
+    private static final int WALL_MAX_REQUESTS = 120;
+
+    private static final Duration WALL_WINDOW = Duration.ofMinutes(1);
 
     private static final int SUBMIT_MAX_REQUESTS = 5;
 
@@ -81,26 +91,34 @@ public class RewardPublicEndpoint implements CustomEndpoint {
     }
 
     private Mono<ServerResponse> getCaptcha(ServerRequest request) {
-        var ip = request.remoteAddress()
-            .map(address -> address.getAddress().getHostAddress())
-            .orElse("unknown");
-        if (!rateLimiter.tryAcquire("captcha:" + ip, CAPTCHA_MAX_REQUESTS, CAPTCHA_WINDOW)) {
-            return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
-                .bodyValue(Map.of("message", "验证码获取过于频繁，请稍后再试"));
-        }
-        return captchaService.generate()
-            .flatMap(captcha -> ServerResponse.ok().bodyValue(captcha))
-            .onErrorResume(error -> {
-                log.error("generate captcha failed", error);
-                return ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .bodyValue(Map.of("message", "验证码生成失败，请稍后再试"));
-            });
+        // 先判总开关：关闭期间不生成图片，也不计入限流配额
+        return settingService.basic()
+            .flatMap(basic -> {
+                if (!basic.isEnable()) {
+                    return ServerResponse.status(HttpStatus.NOT_FOUND)
+                        .bodyValue(Map.of("message", "打赏页面未启用"));
+                }
+                var ip = clientIp(request);
+                if (!rateLimiter.tryAcquire("captcha:" + ip, CAPTCHA_MAX_REQUESTS,
+                    CAPTCHA_WINDOW)) {
+                    return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .bodyValue(Map.of("message", "验证码获取过于频繁，请稍后再试"));
+                }
+                return captchaService.generate()
+                    .flatMap(captcha -> ServerResponse.ok().bodyValue(captcha))
+                    .onErrorResume(this::captchaFailed);
+            })
+            .onErrorResume(this::captchaFailed);
+    }
+
+    private Mono<ServerResponse> captchaFailed(Throwable error) {
+        log.error("generate captcha failed", error);
+        return ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .bodyValue(Map.of("message", "验证码生成失败，请稍后再试"));
     }
 
     private Mono<ServerResponse> getStats(ServerRequest request) {
-        var ip = request.remoteAddress()
-            .map(address -> address.getAddress().getHostAddress())
-            .orElse("unknown");
+        var ip = clientIp(request);
         if (!rateLimiter.tryAcquire("stats:" + ip, STATS_MAX_REQUESTS, STATS_WINDOW)) {
             return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
                 .bodyValue(Map.of("message", "请求过于频繁，请稍后再试"));
@@ -110,6 +128,12 @@ public class RewardPublicEndpoint implements CustomEndpoint {
     }
 
     private Mono<ServerResponse> getConfig(ServerRequest request) {
+        // 配置接口是探测插件是否启用的入口，先限流再判断开关，避免关闭期间被脚本高频探测
+        var ip = clientIp(request);
+        if (!rateLimiter.tryAcquire("config:" + ip, CONFIG_MAX_REQUESTS, CONFIG_WINDOW)) {
+            return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
+                .bodyValue(Map.of("message", "请求过于频繁，请稍后再试"));
+        }
         return settingService.all().flatMap(settings -> {
             if (!settings.basic().isEnable()) {
                 return ServerResponse.status(HttpStatus.NOT_FOUND)
@@ -126,6 +150,11 @@ public class RewardPublicEndpoint implements CustomEndpoint {
     }
 
     private Mono<ServerResponse> listWall(ServerRequest request) {
+        var ip = clientIp(request);
+        if (!rateLimiter.tryAcquire("wall:" + ip, WALL_MAX_REQUESTS, WALL_WINDOW)) {
+            return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
+                .bodyValue(Map.of("message", "请求过于频繁，请稍后再试"));
+        }
         var page = Math.max(parseInt(request.queryParam("page").orElse("1"), 1), 1);
         return settingService.records().flatMap(records -> {
             var size = request.queryParam("size")
@@ -150,9 +179,7 @@ public class RewardPublicEndpoint implements CustomEndpoint {
     }
 
     private Mono<ServerResponse> submit(ServerRequest request) {
-        var ip = request.remoteAddress()
-            .map(address -> address.getAddress().getHostAddress())
-            .orElse("unknown");
+        var ip = clientIp(request);
         if (!rateLimiter.tryAcquire("submit:" + ip, SUBMIT_MAX_REQUESTS, SUBMIT_WINDOW)) {
             return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
                 .bodyValue(Map.of("message", "提交过于频繁，请稍后再试"));
@@ -188,6 +215,13 @@ public class RewardPublicEndpoint implements CustomEndpoint {
             .onErrorResume(IllegalArgumentException.class,
                 e -> ServerResponse.status(HttpStatus.BAD_REQUEST)
                     .bodyValue(Map.of("message", e.getMessage())))
+            // 请求体不是合法 JSON 或字段类型不符属于客户端错误，不能落到下面的 500 里
+            .onErrorResume(DecodingException.class,
+                e -> ServerResponse.status(HttpStatus.BAD_REQUEST)
+                    .bodyValue(Map.of("message", "请求内容格式不正确")))
+            .onErrorResume(ServerWebInputException.class,
+                e -> ServerResponse.status(HttpStatus.BAD_REQUEST)
+                    .bodyValue(Map.of("message", "请求内容格式不正确")))
             .onErrorResume(error -> {
                 log.error("submit reward record failed", error);
                 return ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -200,7 +234,8 @@ public class RewardPublicEndpoint implements CustomEndpoint {
         if (amount == null) {
             throw new IllegalArgumentException("请填写打赏金额");
         }
-        if (amount.compareTo(BigDecimal.ZERO) <= 0 || amount.compareTo(MAX_AMOUNT) > 0) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0
+            || amount.compareTo(RewardRecord.MAX_AMOUNT) > 0) {
             throw new IllegalArgumentException("打赏金额不合法");
         }
         if (amount.stripTrailingZeros().scale() > 2) {
@@ -250,6 +285,16 @@ public class RewardPublicEndpoint implements CustomEndpoint {
                 && authentication.isAuthenticated()
                 && !AnonymousUserConst.PRINCIPAL.equals(authentication.getName()))
             .defaultIfEmpty(false);
+    }
+
+    /**
+     * 限流维度按来源 IP。站点在反向代理之后时依赖 Halo 对转发头的解析，
+     * 代理未透传时所有访客会共享同一份配额。
+     */
+    private static String clientIp(ServerRequest request) {
+        return request.remoteAddress()
+            .map(address -> address.getAddress().getHostAddress())
+            .orElse("unknown");
     }
 
     private static int parseInt(String value, int defaultValue) {

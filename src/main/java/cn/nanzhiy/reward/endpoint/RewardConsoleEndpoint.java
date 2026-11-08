@@ -54,8 +54,6 @@ public class RewardConsoleEndpoint {
 
     private static final Set<String> ALLOWED_METHOD = Set.of("wechat", "alipay", "afdian");
 
-    private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000");
-
     private static final int MAX_BATCH_SIZE = 200;
 
     /**
@@ -261,9 +259,13 @@ public class RewardConsoleEndpoint {
         }
         if (spec.getAmount() != null
             && (spec.getAmount().compareTo(BigDecimal.ZERO) <= 0
-            || spec.getAmount().compareTo(MAX_AMOUNT) > 0)) {
+            || spec.getAmount().compareTo(RewardRecord.MAX_AMOUNT) > 0)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "金额必须大于 0 且不超过 1000000");
+                "金额必须大于 0 且不超过 " + RewardRecord.MAX_AMOUNT.toPlainString());
+        }
+        // 与前台提交保持同一精度口径，避免后台写入三位小数后展示与导出对不上
+        if (spec.getAmount() != null && spec.getAmount().stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "金额最多保留两位小数");
         }
         checkLength(spec.getNickname(), InputSanitizer.MAX_NICKNAME_LENGTH, "昵称");
         checkLength(spec.getMessage(), InputSanitizer.MAX_MESSAGE_LENGTH, "留言");

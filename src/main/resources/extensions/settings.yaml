@@ -10,7 +10,7 @@ spec:
         - $formkit: switch
           name: enable
           label: 启用打赏页面
-          help: 关闭后 /reward 页面将返回 404，已提交的记录不受影响。
+          help: 关闭后 /reward 页面将返回 404，前台提交与验证码入口关闭；公开的赞助者墙与统计接口不受该开关影响。
           value: true
         - $formkit: text
           name: pageTitle

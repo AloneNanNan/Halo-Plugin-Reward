@@ -20,7 +20,7 @@ rules:
   # 回调路径带 name 段（POST /afdian/webhook），Halo 会把这种「有 name 的 POST」
   # 按非资源请求处理，只认 nonResourceURLs；apiGroups/resources 规则对它无效，
   # 必须单独声明，否则匿名请求会被当成未认证而跳转登录页。
-  # 非资源请求的动词取小写 HTTP 方法，这里同时写上 create 兼容另一种口径。
+  # 这条降级路径上 verb 仍是 create，真正的非资源请求才是小写 HTTP 方法，两者都写上。
   - nonResourceURLs:
       - "/apis/api.reward.nanzhiy.cn/v1alpha1/afdian/*"
     verbs: ["post", "create"]

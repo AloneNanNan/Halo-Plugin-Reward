@@ -120,15 +120,26 @@ public class AfdianService {
      * @param order 订单数据（Webhook 或 API 返回的结构）
      */
     public Mono<RewardRecord> handleOrder(Map<String, Object> order) {
-        return handleOrder(order, true, true);
+        return handleOrder(order, OrderOptions.webhook());
     }
 
     /**
-     * @param verify 是否调用开放平台反查订单。手动同步的数据来自已签名的接口，可跳过反查省去一半请求。
-     * @param notify 是否发送新记录通知。手动同步一次可能拉回大量历史订单，逐条通知会变成消息轰炸。
+     * 单条订单的处理选项：回调路径需要反查订单并通知；手动同步复用整批 Token 与预拉的打赏者表，
+     * 避免逐单读 Secret、逐单反查。
      */
-    private Mono<RewardRecord> handleOrder(Map<String, Object> order, boolean verify,
-        boolean notify) {
+    private record OrderOptions(boolean verify, boolean notifyAdmin, String token,
+        Map<String, Sponsor> sponsors) {
+
+        static OrderOptions webhook() {
+            return new OrderOptions(true, true, null, null);
+        }
+
+        static OrderOptions sync(String token, Map<String, Sponsor> sponsors) {
+            return new OrderOptions(false, false, token, sponsors);
+        }
+    }
+
+    private Mono<RewardRecord> handleOrder(Map<String, Object> order, OrderOptions options) {
         var tradeNo = str(order.get("out_trade_no"));
         if (!StringUtils.hasText(tradeNo)) {
             log.warn("afdian order skipped: out_trade_no is blank");
@@ -144,18 +155,21 @@ public class AfdianService {
                         log.warn("afdian order skipped: afdian not enabled, tradeNo={}", tradeNo);
                         return Mono.<RewardRecord>empty();
                     }
-                    return resolveToken(settings)
+                    var tokenMono = StringUtils.hasText(options.token())
+                        ? Mono.just(options.token()) : resolveToken(settings);
+                    return tokenMono
                         .switchIfEmpty(Mono.<String>defer(() -> {
                             log.warn("afdian order skipped: api token not configured, tradeNo={}",
                                 tradeNo);
                             return Mono.empty();
                         }))
-                        .flatMap(token -> verify
-                            ? verifyOrder(tradeNo, settings.getUserId(), token)
-                            : Mono.just(Map.<String, Object>of("order", order)))
-                        .flatMap(verified -> applySponsor(verified, settings))
-                        .flatMap(data -> saveRecord(verifiedOrder(data),
-                            resolveSponsorFromData(data), settings, notify));
+                        .flatMap(resolved -> (options.verify()
+                                ? verifyOrder(tradeNo, settings.getUserId(), resolved)
+                                : Mono.just(Map.<String, Object>of("order", order)))
+                            .flatMap(verified ->
+                                applySponsor(verified, settings, resolved, options.sponsors()))
+                            .flatMap(data -> saveRecord(verifiedOrder(data),
+                                resolveSponsorFromData(data), settings, options.notifyAdmin())));
                 });
             });
     }
@@ -220,20 +234,25 @@ public class AfdianService {
      * 补全打赏者昵称与头像。查不到时保持为空，前台回退为匿名展示。
      */
     private Mono<Map<String, Object>> applySponsor(Map<String, Object> data,
-        AfdianSettings settings) {
+        AfdianSettings settings, String token, Map<String, Sponsor> preloaded) {
         var order = verifiedOrder(data);
         var afdianUserId = str(order.get("user_id"));
         if (!StringUtils.hasText(afdianUserId)) {
             return Mono.just(data);
         }
-        return resolveToken(settings)
-            .flatMap(token -> findSponsor(afdianUserId, settings.getUserId(), token, 1))
-            .map(sponsor -> {
-                var merged = new java.util.HashMap<>(data);
-                merged.put("sponsor", sponsor);
-                return (Map<String, Object>) merged;
-            })
+        if (preloaded != null && preloaded.containsKey(afdianUserId)) {
+            return Mono.just(withSponsor(data, preloaded.get(afdianUserId)));
+        }
+        return findSponsor(afdianUserId, settings.getUserId(), token, 1)
+            .map(sponsor -> withSponsor(data, sponsor))
             .defaultIfEmpty(data);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> withSponsor(Map<String, Object> data, Sponsor sponsor) {
+        var merged = new java.util.HashMap<>(data);
+        merged.put("sponsor", sponsor);
+        return (Map<String, Object>) merged;
     }
 
     private Sponsor resolveSponsorFromData(Map<String, Object> data) {
@@ -251,8 +270,7 @@ public class AfdianService {
         if (page > SPONSOR_MAX_PAGES) {
             return Mono.just(Sponsor.EMPTY);
         }
-        var params = "{\"page\":" + page + "}";
-        return afdianClient.call("query-sponsor", params, devUserId, token)
+        return afdianClient.call("query-sponsor", pageParams(page), devUserId, token)
             .flatMap(result -> {
                 var found = matchSponsor(result, afdianUserId);
                 if (found != null) {
@@ -277,26 +295,11 @@ public class AfdianService {
     }
 
     private Sponsor matchSponsor(Map<String, Object> result, String afdianUserId) {
-        var data = result.get("data");
-        if (!(data instanceof Map<?, ?> dataMap)) {
-            return null;
-        }
-        var list = dataMap.get("list");
-        if (!(list instanceof List<?> items)) {
-            return null;
-        }
-        for (var item : items) {
-            if (!(item instanceof Map<?, ?> sponsorItem)) {
-                continue;
+        // 与批量预拉共用同一套字段解析，避免两处对 user_id/name/avatar 的口径漂移
+        for (var entry : parseSponsorEntries(result)) {
+            if (entry.getKey().equals(afdianUserId)) {
+                return entry.getValue();
             }
-            var user = sponsorItem.get("user");
-            if (!(user instanceof Map<?, ?> userMap)) {
-                continue;
-            }
-            if (!afdianUserId.equals(str(userMap.get("user_id")))) {
-                continue;
-            }
-            return new Sponsor(str(userMap.get("name")), str(userMap.get("avatar")));
         }
         return null;
     }
@@ -350,23 +353,32 @@ public class AfdianService {
             }
             return resolveToken(settings)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("未配置爱发电 API 凭据")))
-                .flatMap(token -> Flux.range(1, SYNC_MAX_PAGES)
-                    .concatMap(page -> fetchOrders(settings, token, page))
-                    .filter(order -> AfdianClient.toInt(order.get("status")) == ORDER_STATUS_PAID)
-                    .concatMap(order -> handleOrder(order, false, false)
-                        .onErrorResume(error -> {
-                            log.warn("afdian order skipped: {}", error.getMessage());
-                            return Mono.empty();
-                        }))
-                    .count()
-                    .map(Long::intValue));
+                .flatMap(token -> loadSponsorMap(settings, token)
+                    .flatMap(sponsors -> syncPages(settings, token, sponsors)));
         });
+    }
+
+    /**
+     * 分页拉取已支付订单并逐条入库。单条订单失败只记日志，不中断整批。
+     */
+    private Mono<Integer> syncPages(AfdianSettings settings, String token,
+        Map<String, Sponsor> sponsors) {
+        var options = OrderOptions.sync(token, sponsors);
+        return Flux.range(1, SYNC_MAX_PAGES)
+            .concatMap(page -> fetchOrders(settings, token, page))
+            .filter(order -> AfdianClient.toInt(order.get("status")) == ORDER_STATUS_PAID)
+            .concatMap(order -> handleOrder(order, options)
+                .onErrorResume(error -> {
+                    log.warn("afdian order skipped: {}", error.getMessage());
+                    return Mono.empty();
+                }))
+            .count()
+            .map(Long::intValue);
     }
 
     @SuppressWarnings("unchecked")
     private Flux<Map<String, Object>> fetchOrders(AfdianSettings settings, String token, int page) {
-        var params = "{\"page\":" + page + "}";
-        return afdianClient.call(QUERY_ORDER, params, settings.getUserId(), token)
+        return afdianClient.call(QUERY_ORDER, pageParams(page), settings.getUserId(), token)
             .flatMapMany(result -> {
                 var ec = AfdianClient.toInt(result.get("ec"));
                 if (ec != 200) {
@@ -388,6 +400,58 @@ public class AfdianService {
                     .filter(item -> item instanceof Map)
                     .map(item -> (Map<String, Object>) item);
             });
+    }
+
+    /**
+     * 手动同步前一次性拉取打赏者名单，避免逐单反查；只覆盖前两页，未命中的用户仍回退到 findSponsor。
+     */
+    private Mono<Map<String, Sponsor>> loadSponsorMap(AfdianSettings settings, String token) {
+        return Flux.range(1, SPONSOR_MAX_PAGES)
+            .concatMap(page -> fetchSponsorEntries(settings.getUserId(), token, page))
+            .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+            // 预拉结果写回缓存，后续回调命中时不必再查
+            .doOnNext(sponsors -> sponsors.forEach(this::cacheSponsor))
+            .onErrorResume(error -> {
+                log.warn("afdian query-sponsor preload failed: {}", error.getMessage());
+                return Mono.just(Map.of());
+            });
+    }
+
+    private Flux<Map.Entry<String, Sponsor>> fetchSponsorEntries(String devUserId, String token,
+        int page) {
+        return afdianClient.call("query-sponsor", pageParams(page), devUserId, token)
+            .flatMapMany(result -> Flux.fromIterable(parseSponsorEntries(result)));
+    }
+
+    private static String pageParams(int page) {
+        return "{\"page\":" + page + "}";
+    }
+
+    private List<Map.Entry<String, Sponsor>> parseSponsorEntries(Map<String, Object> result) {
+        var data = result.get("data");
+        if (!(data instanceof Map<?, ?> dataMap)) {
+            return List.of();
+        }
+        var list = dataMap.get("list");
+        if (!(list instanceof List<?> items)) {
+            return List.of();
+        }
+        var entries = new java.util.ArrayList<Map.Entry<String, Sponsor>>(items.size());
+        for (var item : items) {
+            if (!(item instanceof Map<?, ?> sponsorItem)) {
+                continue;
+            }
+            if (!(sponsorItem.get("user") instanceof Map<?, ?> userMap)) {
+                continue;
+            }
+            var userId = str(userMap.get("user_id"));
+            if (!StringUtils.hasText(userId)) {
+                continue;
+            }
+            entries.add(Map.entry(userId,
+                new Sponsor(str(userMap.get("name")), str(userMap.get("avatar")))));
+        }
+        return entries;
     }
 
     /**

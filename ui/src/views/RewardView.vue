@@ -23,6 +23,9 @@ import RecordEditModal from "../components/RecordEditModal.vue";
 
 const API_BASE = "/apis/console.api.reward.nanzhiy.cn/v1alpha1";
 
+/** 同步要逐单入库，给足超时时间，避免默认无超时一直挂着。 */
+const SYNC_TIMEOUT = 120000;
+
 interface RewardRecord {
   metadata: { name: string; creationTimestamp?: string };
   spec: {
@@ -293,10 +296,15 @@ function batchDelete() {
   });
 }
 
-async function syncAfdian() {
+/**
+ * 一次同步最多拉取 250 条订单，属于会写数据的操作，入口处先确认再执行。
+ */
+async function runSync() {
   syncing.value = true;
   try {
-    const { data } = await axiosInstance.put(`${API_BASE}/afdian/sync`);
+    const { data } = await axiosInstance.put(`${API_BASE}/afdian/sync`, undefined, {
+      timeout: SYNC_TIMEOUT,
+    });
     if (data.message) {
       Toast.warning(data.message);
     } else {
@@ -308,6 +316,15 @@ async function syncAfdian() {
   } finally {
     syncing.value = false;
   }
+}
+
+function confirmSyncAfdian() {
+  Dialog.warning({
+    title: "同步爱发电订单？",
+    description: "将拉取最近最多 250 条已支付订单，已存在的订单不会重复导入。",
+    confirmType: "primary",
+    onConfirm: runSync,
+  });
 }
 
 async function exportCsv() {
@@ -391,7 +408,7 @@ onMounted(() => {
     <template #actions>
       <VSpace>
         <VButton v-if="canManage" type="primary" @click="createVisible = true">新增</VButton>
-        <VButton v-if="canManage" type="secondary" :disabled="syncing" @click="syncAfdian">
+        <VButton v-if="canManage" type="secondary" :disabled="syncing" @click="confirmSyncAfdian">
           同步爱发电
         </VButton>
         <VButton v-if="canManage" type="secondary" @click="exportCsv">导出 CSV</VButton>

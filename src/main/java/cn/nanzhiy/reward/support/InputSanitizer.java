@@ -46,10 +46,17 @@ public final class InputSanitizer {
      */
     public static String clean(String value, int maxLength) {
         var cleaned = stripControlChars(value);
-        if (cleaned == null) {
-            return null;
+        if (cleaned == null || cleaned.length() <= maxLength) {
+            return cleaned;
         }
-        return cleaned.length() > maxLength ? cleaned.substring(0, maxLength) : cleaned;
+        // 截断点正好落在代理对中间时会留下孤立代理字符，落库后变成乱码；这时少截一个字符
+        var end = maxLength;
+        if (Character.isHighSurrogate(cleaned.charAt(end - 1))
+            && Character.isLowSurrogate(cleaned.charAt(end))) {
+            end -= 1;
+        }
+        // 上限为 1 且首字符就是高代理时没有完整字符可留，按空值处理
+        return end <= 0 ? null : cleaned.substring(0, end);
     }
 
     /**

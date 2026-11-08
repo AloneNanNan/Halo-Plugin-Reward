@@ -75,16 +75,20 @@ async function onSubmit(values: Record<string, unknown>) {
   saving.value = true;
   try {
     const payload: Record<string, unknown> = { ...values };
-    // 留空表示沿用入库时间；后端 null 等于不修改，所以这里显式回填一个具体时间。
     const raw = typeof payload.rewardTime === "string" ? payload.rewardTime : "";
-    const fallback = props.record?.metadata.creationTimestamp ?? new Date().toISOString();
-    const chosen = new Date(raw || fallback);
-    // 只做提前拦截，最终判据在后端，容差不要求与后端完全一致。
-    if (chosen.getTime() > Date.now() + 5 * 60 * 1000) {
-      Toast.error("打赏时间不能晚于当前时间");
-      return;
+    if (isEdit.value && !raw) {
+      // 后端 null 表示不修改：编辑时留空应保持「沿用入库时间」，不能用当前时间覆盖成固定值
+      delete payload.rewardTime;
+    } else {
+      const fallback = props.record?.metadata.creationTimestamp ?? new Date().toISOString();
+      const chosen = new Date(raw || fallback);
+      // 只做提前拦截，最终判据在后端，容差不要求与后端完全一致。
+      if (chosen.getTime() > Date.now() + 5 * 60 * 1000) {
+        Toast.error("打赏时间不能晚于当前时间");
+        return;
+      }
+      payload.rewardTime = chosen.toISOString();
     }
-    payload.rewardTime = chosen.toISOString();
     if (isEdit.value && props.record) {
       await axiosInstance.put(`${API_BASE}/records/${props.record.metadata.name}`, payload);
     } else {
@@ -127,7 +131,7 @@ async function onSubmit(values: Record<string, unknown>) {
           type="datetime-local"
           name="rewardTime"
           label="打赏时间"
-          help="补录历史打赏时填实际时间；留空则按记录入库时间展示"
+          help="补录历史打赏时填实际时间；留空表示沿用记录入库时间，已有时间不会被清空"
         />
         <FormKit type="text" name="nickname" label="昵称" maxlength="30" validation="required" />
         <FormKit type="text" name="transactionNo" label="交易单号" maxlength="64" help="用于与收款记录核对" />
