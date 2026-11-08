@@ -440,8 +440,10 @@ onMounted(() => {
 
     <VCard>
       <div class="reward-toolbar">
-        <div class="reward-toolbar__left">
+        <div class="reward-toolbar__search">
           <SearchInput v-model="keyword" placeholder="输入关键词搜索" />
+        </div>
+        <div class="reward-toolbar__filters">
           <FilterDropdown v-model="statusFilter" label="状态" :items="statusItems" />
           <FilterCleanButton v-if="statusFilter" @click="statusFilter = ''" />
         </div>
@@ -592,18 +594,26 @@ onMounted(() => {
 .reward-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
-  /* 窄屏下让两组控件换行，避免被挤出可视区域 */
   flex-wrap: wrap;
 }
 
-.reward-toolbar__left {
+.reward-toolbar__search {
+  display: flex;
+  flex: 0 1 240px;
+  min-width: 0;
+}
+
+/* 搜索组件根元素宽度由 Halo 决定，这里让它填满容器 */
+.reward-toolbar__search > * {
+  width: 100%;
+}
+
+.reward-toolbar__filters {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex: 1;
   min-width: 0;
 }
 
@@ -611,6 +621,34 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-left: auto;
+}
+
+/* 手机竖屏：第一行只放搜索框，第二行放状态筛选与操作入口 */
+@media (max-width: 640px) {
+  .reward-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+  }
+
+  .reward-toolbar__search {
+    grid-column: 1 / -1;
+    flex: none;
+  }
+
+  .reward-toolbar__filters {
+    grid-column: 1;
+    flex-wrap: wrap;
+  }
+
+  .reward-toolbar__right {
+    grid-column: 2;
+    margin-left: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
 }
 
 .reward-toolbar__total {
